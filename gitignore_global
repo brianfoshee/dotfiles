@@ -1,0 +1,6 @@
+# Ignore Stupid OSX transfer files
+**/*.DS_Store
+
+# Ignore VIM swp files
+**/*.swp
+**/*.swo
