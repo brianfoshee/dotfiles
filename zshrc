@@ -95,7 +95,7 @@ bindkey -s "^[Oj" "*"
 bindkey -s "^[Oo" "/"
 
 # RBENV loading into env
-eval "$(rbenv init -)"
+if which rbenv > /dev/null; then eval "$(rbenv init -)"; fi
 
 export GOPATH=$HOME/Code/go
 export GO15VENDOREXPERIMENT=1

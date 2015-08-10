@@ -27,6 +27,8 @@ Plugin 'pangloss/vim-javascript'
 Plugin 'mustache/vim-mustache-handlebars'
 Plugin 'docunext/closetag.vim' " closes a matching html tag
 
+Plugin 'editorconfig/editorconfig-vim' " http://editorconfig.org/
+
 " All of your Plugins must be added before the following line
 call vundle#end()            " required
 filetype plugin indent on    " required
@@ -70,13 +72,23 @@ colorscheme crakalakin
 " Set spacebar to leader
 let mapleader = "\<Space>"
 
+" Disable arrow keys
+nnoremap <up>    <nop>
+nnoremap <down>  <nop>
+nnoremap <left>  <nop>
+nnoremap <right> <nop>
+inoremap <up>    <nop>
+inoremap <down>  <nop>
+inoremap <left>  <nop>
+inoremap <right> <nop>
+
 function! s:Highlight_Matching_Pair()
 endfunction
 
 " Set ignore list
-set wildignore+=Godeps/_workspace/**,**/_site/**,**/bower_components/**,**/node_modules/**,**/vendor/assets/components/**,**/tmp/**,*.o,*.out,*.log,**/cookbooks/**,*.swp,*.swo
+set wildignore+=Godeps/_workspace/**,**/_site/**,**/bower_components/**,**/node_modules/**,**/vendor/**,**/tmp/**,*.o,*.out,*.log,**/cookbooks/**,*.swp,*.swo
 
-" This overrides wildignore
+" This overrides wildignore when using ctrlp
 let g:ctrlp_user_command = 'ag %s --ignore-case --skip-vcs-ignores --nocolor --nogroup --hidden
       \ --ignore ".git/"
       \ --ignore ".svn/"
@@ -139,9 +151,9 @@ if !exists('g:airline_symbols')
 endif
 " unicode symbols
 let g:airline_left_sep = '»'
-let g:airline_left_sep = '▶'
+let g:airline_left_sep = ''
 let g:airline_right_sep = '«'
-let g:airline_right_sep = '◀'
+let g:airline_right_sep = ''
 let g:airline_symbols.linenr = '␊'
 let g:airline_symbols.linenr = '␤'
 let g:airline_symbols.linenr = '¶'
