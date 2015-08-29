@@ -82,6 +82,9 @@ inoremap <down>  <nop>
 inoremap <left>  <nop>
 inoremap <right> <nop>
 
+" Enable spell checking for certain filetypes
+autocmd FileType gitcommit setlocal spell
+
 "function! s:Highlight_Matching_Pair()
 "endfunction
 
@@ -138,8 +141,6 @@ nmap <leader>h :bprevious<CR>
 autocmd BufNewFile,BufReadPost *.md set filetype=markdown
 " Wrap text at 80 chars for markdown files
 au BufRead,BufNewFile *.md setlocal textwidth=80
-" Enable spellchecking for Markdown
-" autocmd FileType markdown setlocal spell
 
 " Autocommand to run git stripspace on file save
 au BufWritePre,FileWritePre * let b:winview = winsaveview() | let b:tmpundofile=tempname() | exe 'wundo! ' . b:tmpundofile
