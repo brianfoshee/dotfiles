@@ -22,12 +22,12 @@ Plugin 'tpope/vim-haml'
 Plugin 'kchmck/vim-coffee-script'
 
 " HTML/CSS/JS plugins
-Plugin 'gorodinskiy/vim-coloresque' " highlights CSS hex/rgb colors
+"Plugin 'gorodinskiy/vim-coloresque' " highlights CSS hex/rgb colors
 Plugin 'pangloss/vim-javascript'
 Plugin 'mustache/vim-mustache-handlebars'
 Plugin 'docunext/closetag.vim' " closes a matching html tag
 
-Plugin 'editorconfig/editorconfig-vim' " http://editorconfig.org/
+"Plugin 'editorconfig/editorconfig-vim' " http://editorconfig.org/
 
 " All of your Plugins must be added before the following line
 call vundle#end()            " required
@@ -82,8 +82,12 @@ inoremap <down>  <nop>
 inoremap <left>  <nop>
 inoremap <right> <nop>
 
-function! s:Highlight_Matching_Pair()
-endfunction
+"function! s:Highlight_Matching_Pair()
+"endfunction
+
+" go language ctags
+let s:tlist_def_go_settings = 'go;g:enum;s:struct;u:union;t:type;' .
+                           \ 'v:variable;f:function'
 
 " Set ignore list
 set wildignore+=Godeps/_workspace/**,**/_site/**,**/bower_components/**,**/node_modules/**,**/vendor/**,**/tmp/**,*.o,*.out,*.log,**/cookbooks/**,*.swp,*.swo
@@ -150,17 +154,11 @@ if !exists('g:airline_symbols')
   let g:airline_symbols = {}
 endif
 " unicode symbols
-let g:airline_left_sep = '»'
 let g:airline_left_sep = ''
-let g:airline_right_sep = '«'
 let g:airline_right_sep = ''
-let g:airline_symbols.linenr = '␊'
-let g:airline_symbols.linenr = '␤'
 let g:airline_symbols.linenr = '¶'
 let g:airline_symbols.branch = '⎇'
 let g:airline_symbols.paste = 'ρ'
-let g:airline_symbols.paste = 'Þ'
-let g:airline_symbols.paste = '∥'
 let g:airline_symbols.whitespace = 'Ξ'
 " Don't override .tmuxline-snapshot
 let g:airline#extensions#tmuxline#enabled = 0
