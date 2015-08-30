@@ -54,7 +54,7 @@ set laststatus=2                " something about vim-airline
 set noshowmode
 set noerrorbells visualbell t_vb= "turn off annoying bells
 set ttyfast                     " when key repeat rate is really fast, keep up!
-set hidden
+set hidden                      " Hide a buffer when it is abandoned.
 " Open new split panes to right and bottom, which feels more natural
 set splitbelow
 set splitright
@@ -84,9 +84,6 @@ inoremap <right> <nop>
 
 " Enable spell checking for certain filetypes
 autocmd FileType gitcommit setlocal spell
-
-"function! s:Highlight_Matching_Pair()
-"endfunction
 
 " go language ctags
 let s:tlist_def_go_settings = 'go;g:enum;s:struct;u:union;t:type;' .
@@ -170,7 +167,7 @@ autocmd FileType html,xml let b:closetag_html_style=1
 au Filetype html,xml source ~/.vim/bundle/closetag.vim/plugin/closetag.vim
 
 " use go formatting
-autocmd FileType go setlocal ts=8 sts=8 sw=8 noexpandtab
+autocmd FileType go setlocal tabstop=4 softtabstop=4 shiftwidth=4 noexpandtab
 
 " Setup vim-go to automatically import paths
 let g:go_fmt_command = "goimports"
