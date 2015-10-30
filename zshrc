@@ -3,7 +3,7 @@ ZSH=$HOME/.oh-my-zsh
 
 # Set name of the theme to load.
 # Look in ~/.oh-my-zsh/themes/
-ZSH_THEME="crakalakin"
+ZSH_THEME="brianfoshee"
 
 # Language
 export LANG="en_US.UTF-8"
@@ -95,8 +95,8 @@ bindkey -s "^[Oj" "*"
 bindkey -s "^[Oo" "/"
 
 # RBENV loading into env
-if which rbenv > /dev/null; then eval "$(rbenv init -)"; fi
 export RBENV_ROOT=/usr/local/var/rbenv
+if which rbenv > /dev/null; then eval "$(rbenv init -)"; fi
 
 export GOPATH=$HOME/Code/go
 export GO15VENDOREXPERIMENT=1
@@ -105,7 +105,7 @@ export GO15VENDOREXPERIMENT=1
 if [[ -z $TMUX ]]; then
   PATH=/Applications/Postgres.app/Contents/Versions/9.4/bin:$PATH
   PATH=$HOME/Code/gcc-arm-none-eabi/bin:$PATH
-  PATH=$PATH:$GOPATH/bin
   PATH=$PATH:/usr/local/go/bin
   PATH=$PATH:/usr/local/sbin
+  PATH=$PATH:$GOPATH/bin
 fi
