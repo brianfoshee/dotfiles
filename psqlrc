@@ -11,3 +11,5 @@
 -- Don't exit with ctrl-d unless you press it 5 times
 \set IGNOREEOF 5
 \set timezone = 'UTC'
+-- Autocomplete SQL keywords in upper case
+\set COMP_KEYWORD_CASE upper
