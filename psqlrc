@@ -1,15 +1,20 @@
+\set QUIET 1
+
+\set timezone = 'UTC'
 \timing on
 \setenv LESS -imx4F
 \x auto
+\pset null 'NULL'
+\set VERBOSITY verbose
 
--- Put a space in front of queries you don't want to save
-\set HISTCONTROL ignorespace
+\set PROMPT1 '%[%033[33;1m%]%x%[%033[0m%]%[%033[1m%]⚡︎ [%/]%[%033[0m%] '
+
+\set HISTCONTROL ignoredups
 \set HISTFILE ~/.psql_history- :DBNAME
 \set HISTSIZE 20000
- -- Huge history file -- ctrl-r is useful
-\pset null 'NULL'
 -- Don't exit with ctrl-d unless you press it 5 times
 \set IGNOREEOF 5
-\set timezone = 'UTC'
 -- Autocomplete SQL keywords in upper case
 \set COMP_KEYWORD_CASE upper
+
+\unset QUIET
