@@ -7,8 +7,12 @@ Plugin 'gmarik/Vundle.vim'
 " The basics
 Plugin 'kien/ctrlp.vim' " search for files
 Plugin 'tpope/vim-fugitive' " git wrapper
-Plugin 'bling/vim-airline' " nice looking status bar
+Plugin 'vim-airline/vim-airline' " nice looking status bar
+Plugin 'vim-airline/vim-airline-themes' " nice looking status bar
+
 Plugin 'edkolev/tmuxline.vim' " nice looking tmux status bar
+
+Plugin 'majutsushi/tagbar' " ctags in a sidebar
 
 Plugin 'fatih/vim-go' " the best
 Plugin 'sirtaj/vim-openscad'
@@ -27,7 +31,8 @@ Plugin 'pangloss/vim-javascript'
 Plugin 'mustache/vim-mustache-handlebars'
 Plugin 'docunext/closetag.vim' " closes a matching html tag
 
-"Plugin 'editorconfig/editorconfig-vim' " http://editorconfig.org/
+Plugin 'editorconfig/editorconfig-vim' " http://editorconfig.org/
+Plugin 'flazz/vim-colorschemes'
 
 " All of your Plugins must be added before the following line
 call vundle#end()            " required
@@ -61,12 +66,13 @@ set splitright
 set backupdir=~/.vim/backup//
 set directory=~/.vim/swap//
 set undodir=~/.vim/undo//
+set tags+=tags;$HOME/
 "folding settings
 "set foldmethod=syntax
 "set foldnestmax=10      "deepest fold is 10 levels
 "set nofoldenable        "dont fold by default
 "set foldlevel=1         "this is just what i use
-syntax on
+syntax off
 colorscheme crakalakin
 
 " Set spacebar to leader
@@ -84,10 +90,39 @@ inoremap <right> <nop>
 
 " Enable spell checking for certain filetypes
 autocmd FileType gitcommit setlocal spell
+autocmd FileType gitcommit syntax on
 
 " go language ctags
-let s:tlist_def_go_settings = 'go;g:enum;s:struct;u:union;t:type;' .
-                           \ 'v:variable;f:function'
+let g:tagbar_type_go = {
+    \ 'ctagstype' : 'go',
+    \ 'kinds'     : [
+        \ 'p:package',
+        \ 'i:imports:1',
+        \ 'c:constants',
+        \ 'v:variables',
+        \ 't:types',
+        \ 'n:interfaces',
+        \ 'w:fields',
+        \ 'e:embedded',
+        \ 'm:methods',
+        \ 'r:constructor',
+        \ 'f:functions'
+    \ ],
+    \ 'sro' : '.',
+    \ 'kind2scope' : {
+        \ 't' : 'ctype',
+        \ 'n' : 'ntype'
+    \ },
+    \ 'scope2kind' : {
+        \ 'ctype' : 't',
+        \ 'ntype' : 'n'
+    \ },
+    \ 'ctagsbin'  : 'gotags',
+    \ 'ctagsargs' : '-sort -silent'
+\ }
+
+" Generate ctags on save
+"au BufWritePost *.go silent! !ctags -R &
 
 " Set ignore list
 set wildignore+=Godeps/_workspace/**,**/_site/**,**/bower_components/**,**/node_modules/**,**/vendor/**,**/tmp/**,*.o,*.out,*.log,**/cookbooks/**,*.swp,*.swo
@@ -116,6 +151,7 @@ let g:ctrlp_user_command = 'ag %s --ignore-case --skip-vcs-ignores --nocolor --n
       \ --ignore "*.pyc"
       \ --ignore "vendor/"
       \ --ignore "tmp/"
+      \ --ignore "build/"
       \ -g ""'
 
 let g:ctrlp_map = '<leader>p'
@@ -134,6 +170,9 @@ nmap <leader>bq :bp <BAR> bd #<CR>
 nmap <leader>l :bnext<CR>
 nmap <leader>h :bprevious<CR>
 
+" Open Tagbag with leader-tb
+nmap <leader>tb :TagbarToggle<CR>
+
 " any .md files are markdown files
 autocmd BufNewFile,BufReadPost *.md set filetype=markdown
 " Wrap text at 80 chars for markdown files
@@ -147,7 +186,8 @@ au BufWritePost,FileWritePost * if exists('b:tmpundofile') | silent! exe 'rundo 
 " Use fonts
 let g:airline_powerline_fonts = 0
 let g:airline#extensions#branch#enabled = 1
-let g:airline_theme = 'papercolor'
+"let g:airline_theme = 'papercolor'
+let g:airline_theme = 'powerlineish'
 if !exists('g:airline_symbols')
   let g:airline_symbols = {}
 endif
@@ -175,3 +215,17 @@ let g:go_highlight_functions = 1
 let g:go_highlight_methods = 1
 let g:go_highlight_structs = 1
 let g:go_highlight_operators = 1
+let g:go_highlight_build_constraints = 1
+au FileType go nmap <leader>d :GoDef<CR>
+
+"let g:syntastic_go_checkers = ['golint', 'govet', 'errcheck']
+"let g:syntastic_mode_map = { 'mode': 'active', 'passive_filetypes': ['go'] }
+au FileType go nmap <Leader>s <Plug>(go-implements)
+au FileType go nmap <Leader>i <Plug>(go-info)
+au FileType go nmap <Leader>e <Plug>(go-rename)
+au FileType go nmap <leader>r <Plug>(go-run)
+au FileType go nmap <leader>b <Plug>(go-build)
+au FileType go nmap <leader>t <Plug>(go-test)
+au FileType go nmap <Leader>gd <Plug>(go-doc)
+au FileType go nmap <Leader>gv <Plug>(go-doc-vertical)
+au FileType go nmap <leader>co <Plug>(go-coverage)
