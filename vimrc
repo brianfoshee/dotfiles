@@ -1,33 +1,27 @@
 " set the runtime path to include Vundle and initialize
 set rtp+=~/.vim/bundle/Vundle.vim
 call vundle#begin()
+
 " let Vundle manage Vundle, required
 Plugin 'gmarik/Vundle.vim'
 
+" The best
+Plugin 'fatih/vim-go'
+
 " The basics
 Plugin 'kien/ctrlp.vim' " search for files
-Plugin 'tpope/vim-fugitive' " git wrapper
-Plugin 'bling/vim-airline' " nice looking status bar
+Plugin 'vim-airline/vim-airline' " nice looking status bar
+Plugin 'vim-airline/vim-airline-themes' " nice looking status bar
 Plugin 'edkolev/tmuxline.vim' " nice looking tmux status bar
-
-Plugin 'fatih/vim-go' " the best
-Plugin 'sirtaj/vim-openscad'
 
 " Ruby plugins
 Plugin 'vim-ruby/vim-ruby'
 Plugin 'tpope/vim-endwise' " adds end to Ruby statements
 " Rails Plugins
 Plugin 'tpope/vim-rails'
-Plugin 'tpope/vim-haml'
-Plugin 'kchmck/vim-coffee-script'
 
 " HTML/CSS/JS plugins
-"Plugin 'gorodinskiy/vim-coloresque' " highlights CSS hex/rgb colors
-Plugin 'pangloss/vim-javascript'
-Plugin 'mustache/vim-mustache-handlebars'
 Plugin 'docunext/closetag.vim' " closes a matching html tag
-
-"Plugin 'editorconfig/editorconfig-vim' " http://editorconfig.org/
 
 " All of your Plugins must be added before the following line
 call vundle#end()            " required
@@ -36,7 +30,6 @@ filetype plugin indent on    " required
 set nocompatible
 set encoding=utf-8
 set showcmd
-"set number
 set ruler
 set clipboard=unnamed
 set tabstop=2
@@ -49,7 +42,6 @@ set cursorline
 set hlsearch                    " highlight matches
 set incsearch                   " incremental searching
 set ignorecase                  " searches are case insensitive...
-set smartcase                   " ... unless they contain at least one capital letter
 set laststatus=2                " something about vim-airline
 set noshowmode
 set noerrorbells visualbell t_vb= "turn off annoying bells
@@ -61,13 +53,11 @@ set splitright
 set backupdir=~/.vim/backup//
 set directory=~/.vim/swap//
 set undodir=~/.vim/undo//
-"folding settings
-"set foldmethod=syntax
-"set foldnestmax=10      "deepest fold is 10 levels
-"set nofoldenable        "dont fold by default
-"set foldlevel=1         "this is just what i use
 syntax on
-colorscheme crakalakin
+set nocursorcolumn
+set nocursorline
+set background=dark
+colorscheme nofrils-dark
 
 " Set spacebar to leader
 let mapleader = "\<Space>"
@@ -83,11 +73,25 @@ inoremap <left>  <nop>
 inoremap <right> <nop>
 
 " Enable spell checking for certain filetypes
-autocmd FileType gitcommit setlocal spell
+" autocmd FileType gitcommit setlocal spell
+" Turn on syntax highlighting for git commits
+" autocmd FileType gitcommit syntax on
 
-" go language ctags
-let s:tlist_def_go_settings = 'go;g:enum;s:struct;u:union;t:type;' .
-                           \ 'v:variable;f:function'
+" Show syntax highlighting groups for word under cursor
+" From http://stackoverflow.com/a/7893500/859353
+nmap <F2> :call <SID>SynStack()<CR>
+function! <SID>SynStack()
+    if !exists("*synstack")
+        return
+    endif
+    echo map(synstack(line('.'), col('.')), 'synIDattr(v:val, "name")')
+endfunc
+
+" When open a new file remember the cursor position of the last editing
+if has("autocmd")
+        " When editing a file, always jump to the last cursor position
+        autocmd BufReadPost * if line("'\"") | exe "'\"" | endif
+endif
 
 " Set ignore list
 set wildignore+=Godeps/_workspace/**,**/_site/**,**/bower_components/**,**/node_modules/**,**/vendor/**,**/tmp/**,*.o,*.out,*.log,**/cookbooks/**,*.swp,*.swo
@@ -147,7 +151,7 @@ au BufWritePost,FileWritePost * if exists('b:tmpundofile') | silent! exe 'rundo 
 " Use fonts
 let g:airline_powerline_fonts = 0
 let g:airline#extensions#branch#enabled = 1
-let g:airline_theme = 'papercolor'
+let g:airline_theme = 'powerlineish'
 if !exists('g:airline_symbols')
   let g:airline_symbols = {}
 endif
@@ -171,7 +175,6 @@ autocmd FileType go setlocal tabstop=4 softtabstop=4 shiftwidth=4 noexpandtab
 
 " Setup vim-go to automatically import paths
 let g:go_fmt_command = "goimports"
-let g:go_highlight_functions = 1
-let g:go_highlight_methods = 1
-let g:go_highlight_structs = 1
-let g:go_highlight_operators = 1
+au FileType go nmap <leader>d :GoDef<CR>
+au FileType go nmap <leader>ga :GoAlternate<CR>
+au FileType go nmap <leader>gd :GoDecls<CR>

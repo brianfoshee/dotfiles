@@ -31,6 +31,7 @@ alias ta='tmux att -t'
 alias tns='tmux new -s'
 alias dm='docker-machine'
 alias dcp='docker-compose'
+alias st='xcrun swift -F /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks'
 
 export UPDATE_ZSH_DAYS=7
 export EDITOR="/usr/local/bin/vim"
@@ -71,35 +72,11 @@ bindkey '\e[A' history-beginning-search-backward
 bindkey '\e[B' history-beginning-search-forward
 bindkey "^?" backward-delete-char
 
-# Allow numpad on external keyboard to work
-# 0 . Enter
-bindkey -s "^[Op" "0"
-bindkey -s "^[On" "."
-bindkey -s "^[OM" "^M"
-# 1 2 3
-bindkey -s "^[Oq" "1"
-bindkey -s "^[Or" "2"
-bindkey -s "^[Os" "3"
-# 4 5 6
-bindkey -s "^[Ot" "4"
-bindkey -s "^[Ou" "5"
-bindkey -s "^[Ov" "6"
-# 7 8 9
-bindkey -s "^[Ow" "7"
-bindkey -s "^[Ox" "8"
-bindkey -s "^[Oy" "9"
-# + -  * /
-bindkey -s "^[Ol" "+"
-bindkey -s "^[Om" "-"
-bindkey -s "^[Oj" "*"
-bindkey -s "^[Oo" "/"
-
-# RBENV loading into env
-export RBENV_ROOT=/usr/local/var/rbenv
-if which rbenv > /dev/null; then eval "$(rbenv init -)"; fi
+# Load chruby
+source /usr/local/opt/chruby/share/chruby/chruby.sh
+source /usr/local/share/chruby/auto.sh
 
 export GOPATH=$HOME/Code/go
-export GO15VENDOREXPERIMENT=1
 
 # Skip setting PATH inside tmux
 if [[ -z $TMUX ]]; then
