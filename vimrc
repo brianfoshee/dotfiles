@@ -12,36 +12,24 @@ Plugin 'vim-airline/vim-airline-themes' " nice looking status bar
 
 Plugin 'edkolev/tmuxline.vim' " nice looking tmux status bar
 
-Plugin 'majutsushi/tagbar' " ctags in a sidebar
-
 Plugin 'fatih/vim-go' " the best
-Plugin 'sirtaj/vim-openscad'
 
 " Ruby plugins
 Plugin 'vim-ruby/vim-ruby'
 Plugin 'tpope/vim-endwise' " adds end to Ruby statements
 " Rails Plugins
 Plugin 'tpope/vim-rails'
-Plugin 'tpope/vim-haml'
-Plugin 'kchmck/vim-coffee-script'
-
-" HTML/CSS/JS plugins
-"Plugin 'gorodinskiy/vim-coloresque' " highlights CSS hex/rgb colors
-Plugin 'pangloss/vim-javascript'
-Plugin 'mustache/vim-mustache-handlebars'
-Plugin 'docunext/closetag.vim' " closes a matching html tag
 
 Plugin 'editorconfig/editorconfig-vim' " http://editorconfig.org/
-Plugin 'flazz/vim-colorschemes'
 
 " All of your Plugins must be added before the following line
 call vundle#end()            " required
 filetype plugin indent on    " required
 
 set nocompatible
+set background=dark
 set encoding=utf-8
 set showcmd
-"set number
 set ruler
 set clipboard=unnamed
 set tabstop=2
@@ -67,13 +55,8 @@ set backupdir=~/.vim/backup//
 set directory=~/.vim/swap//
 set undodir=~/.vim/undo//
 set tags+=tags;$HOME/
-"folding settings
-"set foldmethod=syntax
-"set foldnestmax=10      "deepest fold is 10 levels
-"set nofoldenable        "dont fold by default
-"set foldlevel=1         "this is just what i use
 syntax off
-colorscheme crakalakin
+colorscheme nofrils-dark
 
 " Set spacebar to leader
 let mapleader = "\<Space>"
@@ -89,40 +72,8 @@ inoremap <left>  <nop>
 inoremap <right> <nop>
 
 " Enable spell checking for certain filetypes
-autocmd FileType gitcommit setlocal spell
-autocmd FileType gitcommit syntax on
-
-" go language ctags
-let g:tagbar_type_go = {
-    \ 'ctagstype' : 'go',
-    \ 'kinds'     : [
-        \ 'p:package',
-        \ 'i:imports:1',
-        \ 'c:constants',
-        \ 'v:variables',
-        \ 't:types',
-        \ 'n:interfaces',
-        \ 'w:fields',
-        \ 'e:embedded',
-        \ 'm:methods',
-        \ 'r:constructor',
-        \ 'f:functions'
-    \ ],
-    \ 'sro' : '.',
-    \ 'kind2scope' : {
-        \ 't' : 'ctype',
-        \ 'n' : 'ntype'
-    \ },
-    \ 'scope2kind' : {
-        \ 'ctype' : 't',
-        \ 'ntype' : 'n'
-    \ },
-    \ 'ctagsbin'  : 'gotags',
-    \ 'ctagsargs' : '-sort -silent'
-\ }
-
-" Generate ctags on save
-"au BufWritePost *.go silent! !ctags -R &
+" autocmd FileType gitcommit setlocal spell
+" autocmd FileType gitcommit syntax on
 
 " Set ignore list
 set wildignore+=Godeps/_workspace/**,**/_site/**,**/bower_components/**,**/node_modules/**,**/vendor/**,**/tmp/**,*.o,*.out,*.log,**/cookbooks/**,*.swp,*.swo
