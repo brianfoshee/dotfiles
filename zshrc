@@ -31,6 +31,7 @@ alias ta='tmux att -t'
 alias tns='tmux new -s'
 alias dm='docker-machine'
 alias dcp='docker-compose'
+alias gt='go test $(go list ./... | grep -v /vendor/)'
 
 export UPDATE_ZSH_DAYS=7
 export EDITOR="/usr/local/bin/vim"
@@ -94,11 +95,13 @@ bindkey -s "^[Om" "-"
 bindkey -s "^[Oj" "*"
 bindkey -s "^[Oo" "/"
 
-export RBENV_ROOT=/usr/local/var/rbenv
-if which rbenv > /dev/null; then eval "$(rbenv init -)"; fi
-
 export GOPATH=$HOME/Code/go
-export GO15VENDOREXPERIMENT=1
+
+# Setup docker machine
+export DOCKER_TLS_VERIFY="1"
+export DOCKER_HOST="tcp://192.168.225.129:2376"
+export DOCKER_CERT_PATH="/Users/brian/.docker/machine/machines/dev"
+export DOCKER_MACHINE_NAME="dev"
 
 # Skip setting PATH inside tmux
 if [[ -z $TMUX ]]; then
