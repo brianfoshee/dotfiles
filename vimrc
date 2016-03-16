@@ -54,7 +54,8 @@ set splitright
 set backupdir=~/.vim/backup//
 set directory=~/.vim/swap//
 set undodir=~/.vim/undo//
-set tags+=tags;$HOME/
+set nocursorcolumn
+set nocursorline
 syntax off
 colorscheme nofrils-dark
 
@@ -107,6 +108,12 @@ let g:ctrlp_user_command = 'ag %s --ignore-case --skip-vcs-ignores --nocolor --n
 
 let g:ctrlp_map = '<leader>p'
 let g:ctrlp_cmd = 'CtrlP'
+
+" When open a new file remember the cursor position of the last editing
+if has("autocmd")
+        " When editing a file, always jump to the last cursor position
+        autocmd BufReadPost * if line("'\"") | exe "'\"" | endif
+endif
 
 " <Ctrl-l> redraws the screen and removes any search highlighting.
 nnoremap <silent> <C-l> :nohl<CR><C-l>
@@ -168,15 +175,5 @@ let g:go_highlight_structs = 1
 let g:go_highlight_operators = 1
 let g:go_highlight_build_constraints = 1
 au FileType go nmap <leader>d :GoDef<CR>
-
-"let g:syntastic_go_checkers = ['golint', 'govet', 'errcheck']
-"let g:syntastic_mode_map = { 'mode': 'active', 'passive_filetypes': ['go'] }
-au FileType go nmap <Leader>s <Plug>(go-implements)
-au FileType go nmap <Leader>i <Plug>(go-info)
-au FileType go nmap <Leader>e <Plug>(go-rename)
-au FileType go nmap <leader>r <Plug>(go-run)
-au FileType go nmap <leader>b <Plug>(go-build)
-au FileType go nmap <leader>t <Plug>(go-test)
-au FileType go nmap <Leader>gd <Plug>(go-doc)
-au FileType go nmap <Leader>gv <Plug>(go-doc-vertical)
-au FileType go nmap <leader>co <Plug>(go-coverage)
+au FileType go nmap <leader>ga :GoAlternate<CR>
+au FileType go nmap <leader>gd :GoDecls<CR>
