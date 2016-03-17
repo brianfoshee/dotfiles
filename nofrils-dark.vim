@@ -16,10 +16,6 @@ if !exists("g:nofrils_strbackgrounds") " {{{
     let g:nofrils_strbackgrounds = 0
 endif " }}}
 
-" Baseline {{{
-hi Normal		term=NONE	cterm=NONE	ctermfg=250 ctermbg=0	gui=NONE	guifg=#FFFFFF	guibg=#262626
-" }}}
-
 " Faded {{{
 hi ColorColumn		term=NONE	cterm=NONE	ctermfg=0	ctermbg=240	gui=NONE	guifg=#000000	guibg=#585858
 hi Comment		term=NONE	cterm=NONE	ctermfg=240	ctermbg=NONE	gui=NONE	guifg=#585858	guibg=NONE
@@ -41,13 +37,13 @@ hi CursorColumn		term=NONE	cterm=NONE	ctermfg=NONE	ctermbg=0	gui=NONE	guifg=NONE
 hi Cursor		term=NONE	cterm=NONE	ctermfg=0	ctermbg=4	gui=NONE	guifg=#000000	guibg=#00FFFF
 hi Directory		term=NONE	cterm=NONE	ctermfg=69	ctermbg=NONE	gui=NONE	guifg=#5F87FF	guibg=NONE
 hi ErrorMsg		term=NONE	cterm=NONE	ctermfg=15	ctermbg=52	gui=NONE	guifg=NONE	guibg=#5F0000
-hi Error		term=NONE	cterm=NONE	ctermfg=15	ctermbg=52	gui=NONE	guifg=NONE	guibg=#5F0000
+hi Error		term=NONE	cterm=NONE	ctermfg=15	ctermbg=0	gui=NONE	guifg=NONE	guibg=#5F0000
 hi ModeMsg		term=NONE	cterm=NONE	ctermfg=69	ctermbg=NONE	gui=NONE	guifg=#5F87FF	guibg=NONE
 hi MoreMsg		term=NONE	cterm=NONE	ctermfg=69	ctermbg=NONE	gui=NONE	guifg=#5F87FF	guibg=NONE
 hi Question		term=NONE	cterm=NONE	ctermfg=69	ctermbg=NONE	gui=NONE	guifg=#5F87FF	guibg=NONE
 hi Search		term=NONE	cterm=NONE	ctermfg=0	ctermbg=6	gui=NONE	guifg=#000000	guibg=#00CDCD
 hi StatusLine		term=NONE	cterm=NONE	ctermfg=0	ctermbg=15	gui=NONE	guifg=#000000	guibg=#FFFFFF
-hi Todo		        term=NONE	cterm=NONE	ctermfg=10	ctermbg=NONE	gui=NONE	guifg=#00FF00   guibg=#000000
+hi Todo		        term=NONE	cterm=NONE	ctermfg=NONE ctermbg=NONE	gui=NONE	guifg=#00FF00   guibg=#000000
 hi VisualNOS		term=NONE	cterm=NONE	ctermfg=NONE	ctermbg=69	gui=NONE	guifg=NONE	guibg=#5F87FF
 hi WarningMsg		term=NONE	cterm=NONE	ctermfg=15	ctermbg=52	gui=NONE	guifg=NONE	guibg=#5F0000
 " }}}
