@@ -56,7 +56,7 @@ set directory=~/.vim/swap//
 set undodir=~/.vim/undo//
 set nocursorcolumn
 set nocursorline
-syntax off
+syntax on
 colorscheme nofrils-dark
 
 " Set spacebar to leader
@@ -177,3 +177,13 @@ let g:go_highlight_build_constraints = 1
 au FileType go nmap <leader>d :GoDef<CR>
 au FileType go nmap <leader>ga :GoAlternate<CR>
 au FileType go nmap <leader>gd :GoDecls<CR>
+
+" Show syntax highlighting groups for word under cursor
+" From http://stackoverflow.com/a/7893500/859353
+nmap <F2> :call <SID>SynStack()<CR>
+function! <SID>SynStack()
+    if !exists("*synstack")
+        return
+    endif
+    echo map(synstack(line('.'), col('.')), 'synIDattr(v:val, "name")')
+endfunc
