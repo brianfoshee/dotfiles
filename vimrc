@@ -77,16 +77,6 @@ inoremap <right> <nop>
 " Turn on syntax highlighting for git commits
 " autocmd FileType gitcommit syntax on
 
-" Show syntax highlighting groups for word under cursor
-" From http://stackoverflow.com/a/7893500/859353
-nmap <F2> :call <SID>SynStack()<CR>
-function! <SID>SynStack()
-    if !exists("*synstack")
-        return
-    endif
-    echo map(synstack(line('.'), col('.')), 'synIDattr(v:val, "name")')
-endfunc
-
 " When open a new file remember the cursor position of the last editing
 if has("autocmd")
         " When editing a file, always jump to the last cursor position
