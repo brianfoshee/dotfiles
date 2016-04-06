@@ -122,6 +122,11 @@ hi Type		        term=NONE	cterm=NONE	ctermfg=NONE	ctermbg=NONE	gui=NONE	guifg=N
 hi Underlined		term=NONE	cterm=NONE	ctermfg=NONE	ctermbg=NONE	gui=NONE	guifg=NONE	guibg=NONE
 " }}}
 
+" Git {{{
+hi diffAdded        term=NONE      cterm=NONE      ctermfg=10      ctermbg=NONE      gui=NONE      guifg=#00ff00      guibg=NONE
+hi diffRemoved      term=NONE      cterm=NONE      ctermfg=9       ctermbg=NONE      gui=NONE      guifg=#ff0000      guibg=NONE
+" }}}
+
 " Optional Syntax Features {{{
 if g:nofrils_strbackgrounds
     hi String		term=NONE	cterm=NONE	ctermfg=NONE	ctermbg=233	gui=NONE	guifg=NONE	guibg=#121212
