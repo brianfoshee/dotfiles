@@ -9,6 +9,7 @@ Plugin 'gmarik/Vundle.vim'
 Plugin 'fatih/vim-go'
 
 " The basics
+Plugin 'tpope/vim-fugitive' " git wrapper
 Plugin 'ctrlpvim/ctrlp.vim' " search for files
 Plugin 'vim-airline/vim-airline' " nice looking status bar
 Plugin 'vim-airline/vim-airline-themes' " nice looking status bar
