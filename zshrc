@@ -52,7 +52,7 @@ export BOARD=BOARD_PCA10000
 
 DISABLE_UNTRACKED_FILES_DIRTY="true"
 
-plugins=(git ruby rails rbenv github heroku)
+plugins=(git github heroku)
 
 source $ZSH/oh-my-zsh.sh
 
@@ -97,4 +97,4 @@ else
     eval $(gpg-agent --daemon --write-env-file ~/.gnupg/.gpg-agent-info)
 fi
 
-export HOMEBREW_GITHUB_API_TOKEN=09febc18e55e7e2dc75bcc1d7b56c101ad925c6b
+source $HOME/.homebrew-gihub-api-token
