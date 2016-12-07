@@ -15,12 +15,6 @@ Plugin 'vim-airline/vim-airline' " nice looking status bar
 Plugin 'vim-airline/vim-airline-themes' " nice looking status bar
 Plugin 'edkolev/tmuxline.vim' " nice looking tmux status bar
 
-" Ruby plugins
-Plugin 'vim-ruby/vim-ruby'
-Plugin 'tpope/vim-endwise' " adds end to Ruby statements
-" Rails Plugins
-Plugin 'tpope/vim-rails'
-
 " HTML/CSS/JS plugins
 Plugin 'docunext/closetag.vim' " closes a matching html tag
 
@@ -59,6 +53,7 @@ set nocursorcolumn
 set nocursorline
 set background=dark
 colorscheme nofrils-dark
+"colorscheme brianfoshee
 
 " Set spacebar to leader
 let mapleader = "\<Space>"
@@ -77,12 +72,6 @@ inoremap <right> <nop>
 " autocmd FileType gitcommit setlocal spell
 " Turn on syntax highlighting for git commits
 " autocmd FileType gitcommit syntax on
-
-" When open a new file remember the cursor position of the last editing
-if has("autocmd")
-        " When editing a file, always jump to the last cursor position
-        autocmd BufReadPost * if line("'\"") | exe "'\"" | endif
-endif
 
 " Set ignore list
 set wildignore+=Godeps/_workspace/**,**/_site/**,**/bower_components/**,**/node_modules/**,**/vendor/**,**/tmp/**,*.o,*.out,*.log,**/cookbooks/**,*.swp,*.swo
@@ -111,6 +100,7 @@ let g:ctrlp_user_command = 'ag %s --ignore-case --skip-vcs-ignores --nocolor --n
       \ --ignore "*.pyc"
       \ --ignore "vendor/"
       \ --ignore "tmp/"
+      \ --ignore "dist/"
       \ -g ""'
 
 let g:ctrlp_map = '<leader>p'
