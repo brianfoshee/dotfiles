@@ -97,4 +97,4 @@ else
     eval $(gpg-agent --daemon --write-env-file ~/.gnupg/.gpg-agent-info)
 fi
 
-source $HOME/.homebrew-gihub-api-token
+source $HOME/.homebrew-github-api-token
