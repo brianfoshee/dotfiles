@@ -76,12 +76,13 @@ export GOPATH=$HOME/Code/go
 
 # Skip setting PATH inside tmux
 if [[ -z $TMUX ]]; then
-  PATH=/Applications/Postgres.app/Contents/Versions/9.4/bin:$PATH
+  PATH=/Applications/Postgres.app/Contents/Versions/latest/bin:$PATH
   PATH=$PATH:/usr/local/go/bin
   PATH=$PATH:/usr/local/sbin
   PATH=$PATH:$GOPATH/bin
 
   source /usr/local/Caskroom/google-cloud-sdk/latest/google-cloud-sdk/path.zsh.inc
+  source /usr/local/Caskroom/google-cloud-sdk/latest/google-cloud-sdk/completion.zsh.inc
 fi
 
 # In order for gpg to find gpg-agent, gpg-agent must be running, and there must be an env
