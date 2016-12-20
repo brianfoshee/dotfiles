@@ -1,5 +1,5 @@
 # Path to your oh-my-zsh configuration.
-ZSH=$HOME/.oh-my-zsh
+export ZSH=$HOME/.oh-my-zsh
 
 # Set name of the theme to load.
 # Look in ~/.oh-my-zsh/themes/
@@ -72,7 +72,7 @@ bindkey '\e[A' history-beginning-search-backward
 bindkey '\e[B' history-beginning-search-forward
 bindkey "^?" backward-delete-char
 
-export GOPATH=$HOME/Code/go
+export GOPATH=$HOME/Code
 
 # Skip setting PATH inside tmux
 if [[ -z $TMUX ]]; then
