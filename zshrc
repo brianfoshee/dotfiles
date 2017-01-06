@@ -80,6 +80,7 @@ if [[ -z $TMUX ]]; then
   PATH=$PATH:/usr/local/go/bin
   PATH=$PATH:/usr/local/sbin
   PATH=$PATH:$GOPATH/bin
+  PATH=$PATH:$HOME/Library/Python/2.7/bin
 
   source /usr/local/Caskroom/google-cloud-sdk/latest/google-cloud-sdk/path.zsh.inc
   source /usr/local/Caskroom/google-cloud-sdk/latest/google-cloud-sdk/completion.zsh.inc
