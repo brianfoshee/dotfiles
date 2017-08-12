@@ -1,26 +1,29 @@
-" set the runtime path to include Vundle and initialize
-set rtp+=~/.vim/bundle/Vundle.vim
-call vundle#begin()
+if empty(glob('~/.vim/autoload/plug.vim'))
+  silent !curl -fLo ~/.vim/autoload/plug.vim --create-dirs
+    \ https://raw.githubusercontent.com/junegunn/vim-plug/master/plug.vim
+  autocmd VimEnter * PlugInstall --sync | source ~/.vimrc
+endif
 
-" let Vundle manage Vundle, required
-Plugin 'gmarik/Vundle.vim'
+call plug#begin('~/.vim/plugged')
 
 " The best
-Plugin 'fatih/vim-go'
+Plug 'fatih/vim-go'
 
 " The basics
-Plugin 'tpope/vim-fugitive' " git wrapper
-Plugin 'ctrlpvim/ctrlp.vim' " search for files
-Plugin 'vim-airline/vim-airline' " nice looking status bar
-Plugin 'vim-airline/vim-airline-themes' " nice looking status bar
-Plugin 'edkolev/tmuxline.vim' " nice looking tmux status bar
+Plug 'tpope/vim-fugitive' " git wrapper
+Plug 'ctrlpvim/ctrlp.vim' " search for files
+Plug 'vim-airline/vim-airline' " nice looking status bar
+Plug 'vim-airline/vim-airline-themes' " nice looking status bar
+Plug 'edkolev/tmuxline.vim' " nice looking tmux status bar
 
 " HTML/CSS/JS plugins
-Plugin 'docunext/closetag.vim' " closes a matching html tag
+Plug 'docunext/closetag.vim' " closes a matching html tag
+Plug 'prettier/vim-prettier', {
+	\ 'do': 'yarn install',
+	\ 'for': ['javascript', 'typescript', 'css', 'less', 'scss', 'json', 'graphql'] }
 
 " All of your Plugins must be added before the following line
-call vundle#end()            " required
-filetype plugin indent on    " required
+call plug#end()            " required
 
 set nocompatible
 set encoding=utf-8
@@ -159,3 +162,7 @@ let g:go_fmt_command = "goimports"
 au FileType go nmap <leader>d :GoDef<CR>
 au FileType go nmap <leader>ga :GoAlternate<CR>
 au FileType go nmap <leader>gd :GoDecls<CR>
+
+" Prettier setup
+let g:prettier#autoformat = 0
+autocmd BufWritePre *.js,*.json,*.css,*.scss,*.less,*.graphql PrettierAsync
