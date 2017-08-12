@@ -83,10 +83,9 @@ if [[ -z $TMUX ]]; then
   PATH=$PATH:$GOPATH/bin
   PATH=$PATH:$HOME/Code/go_appengine
 
+  source $HOME/Code/google-cloud-sdk/completion.zsh.inc
   source $HOME/Code/google-cloud-sdk/path.zsh.inc
 fi
-
-source $HOME/Code/google-cloud-sdk/completion.zsh.inc
 
 source $HOME/.homebrew-github-api-token
 source $HOME/.drone-user-token
