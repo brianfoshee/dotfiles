@@ -18,9 +18,6 @@ Plug 'edkolev/tmuxline.vim' " nice looking tmux status bar
 
 " HTML/CSS/JS plugins
 Plug 'docunext/closetag.vim' " closes a matching html tag
-Plug 'prettier/vim-prettier', {
-	\ 'do': 'yarn install',
-	\ 'for': ['javascript', 'typescript', 'css', 'less', 'scss', 'json', 'graphql'] }
 
 " All of your Plugins must be added before the following line
 call plug#end()            " required
@@ -108,6 +105,9 @@ let g:ctrlp_user_command = 'ag %s --ignore-case --skip-vcs-ignores --nocolor --n
 
 let g:ctrlp_map = '<leader>p'
 let g:ctrlp_cmd = 'CtrlP'
+" ctrl-p only search the current directory, not the entire git parent
+" directory
+" let g:ctrlp_working_path_mode = 'c'
 
 " <Ctrl-l> redraws the screen and removes any search highlighting.
 nnoremap <silent> <C-l> :nohl<CR><C-l>
@@ -162,7 +162,3 @@ let g:go_fmt_command = "goimports"
 au FileType go nmap <leader>d :GoDef<CR>
 au FileType go nmap <leader>ga :GoAlternate<CR>
 au FileType go nmap <leader>gd :GoDecls<CR>
-
-" Prettier setup
-let g:prettier#autoformat = 0
-autocmd BufWritePre *.js,*.json,*.css,*.scss,*.less,*.graphql PrettierAsync
