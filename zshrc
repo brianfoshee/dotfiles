@@ -81,11 +81,14 @@ if [[ -z $TMUX ]]; then
   PATH=$PATH:/usr/local/go/bin
   PATH=$PATH:/usr/local/sbin
   PATH=$PATH:$GOPATH/bin
-  PATH=$PATH:$HOME/Code/go_appengine
-
-  source $HOME/Code/google-cloud-sdk/completion.zsh.inc
-  source $HOME/Code/google-cloud-sdk/path.zsh.inc
 fi
 
 source $HOME/.homebrew-github-api-token
 source $HOME/.drone-user-token
+source /usr/local/opt/chruby/share/chruby/chruby.sh
+
+if type brew &>/dev/null; then
+  # this used to be: $(brew --prefix)/share
+  FPATH=/usr/local/share/zsh/site-functions:$FPATH
+fi
+export PATH="/usr/local/opt/node@10/bin:$PATH"
