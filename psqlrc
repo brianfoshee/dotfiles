@@ -7,7 +7,7 @@ set timezone = 'UTC';
 \pset null 'NULL'
 \set VERBOSITY verbose
 
-\set PROMPT1 '%[%033[33;1m%]%x%[%033[0m%]%[%033[1m%]⚡︎ [%/]%[%033[0m%] '
+\set PROMPT1 '%[%033[33;1m%]%x%[%033[0m%]%[%033[1m%]🐘 [%/]%[%033[0m%] '
 
 \set HISTCONTROL ignoredups
 \set HISTFILE ~/.psql_history- :DBNAME
