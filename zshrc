@@ -73,6 +73,7 @@ bindkey '\e[B' history-beginning-search-forward
 bindkey "^?" backward-delete-char
 
 export GOPATH=$HOME/Code
+export GOPROXY=https://proxy.golang.org
 
 # Skip setting PATH inside tmux
 if [[ -z $TMUX ]]; then
