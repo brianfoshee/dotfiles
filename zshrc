@@ -74,6 +74,7 @@ bindkey "^?" backward-delete-char
 
 export GOPATH=$HOME/Code
 export GOPROXY=https://proxy.golang.org
+export GO111MODULE=on
 
 # Skip setting PATH inside tmux
 if [[ -z $TMUX ]]; then
@@ -85,11 +86,13 @@ if [[ -z $TMUX ]]; then
 fi
 
 source $HOME/.homebrew-github-api-token
-source $HOME/.drone-user-token
 source /usr/local/opt/chruby/share/chruby/chruby.sh
 
 if type brew &>/dev/null; then
   # this used to be: $(brew --prefix)/share
   FPATH=/usr/local/share/zsh/site-functions:$FPATH
 fi
-export PATH="/usr/local/opt/node@10/bin:$PATH"
+
+# cloud sdk things
+source '/usr/local/Caskroom/google-cloud-sdk/latest/google-cloud-sdk/path.zsh.inc'
+source '/usr/local/Caskroom/google-cloud-sdk/latest/google-cloud-sdk/completion.zsh.inc'
