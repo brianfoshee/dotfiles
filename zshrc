@@ -74,7 +74,7 @@ bindkey "^?" backward-delete-char
 
 export GOPATH=$HOME/Code
 export GOPROXY=https://proxy.golang.org
-export GO111MODULE=on
+export GO111MODULE=auto
 
 # Skip setting PATH inside tmux
 if [[ -z $TMUX ]]; then
@@ -96,3 +96,6 @@ fi
 # cloud sdk things
 source '/usr/local/Caskroom/google-cloud-sdk/latest/google-cloud-sdk/path.zsh.inc'
 source '/usr/local/Caskroom/google-cloud-sdk/latest/google-cloud-sdk/completion.zsh.inc'
+
+autoload -U +X bashcompinit && bashcompinit
+complete -o nospace -C /usr/local/bin/vault vault
