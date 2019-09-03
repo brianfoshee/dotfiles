@@ -29,23 +29,11 @@ alias swift='xcrun swift -v -sdk $(xcrun --show-sdk-path --sdk macosx)'
 alias tls='tmux list-sessions'
 alias ta='tmux att -t'
 alias tns='tmux new -s'
-alias dm='docker-machine'
-alias dcp='docker-compose'
-alias st='xcrun swift -F /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/Library/Frameworks'
 
 export UPDATE_ZSH_DAYS=7
 export EDITOR="/usr/local/bin/vim"
 export PSQL_EDITOR=$EDITOR
 export HOMEBREW_CASK_OPTS="--appdir=/Applications"
-
-# ARM/nrf51822 stuff
-export SDK_PATH=$HOME/Code/nordic/nrf51_sdk_v5_2_0_39364/nrf51822/
-export TEMPLATE_PATH=$HOME/Code/nordic/nrf51-pure-gcc-setup/template/
-export USE_SOFTDEVICE=s110
-export JLINK_DIR=/usr/bin
-export ARM_DIR=$HOME/Code/gcc-arm-none-eabi
-export DEVICE=NRF51
-export BOARD=BOARD_PCA10000
 
 # Uncomment following line if you want to disable autosetting terminal title.
 # DISABLE_AUTO_TITLE="true"
@@ -73,8 +61,6 @@ bindkey '\e[B' history-beginning-search-forward
 bindkey "^?" backward-delete-char
 
 export GOPATH=$HOME/Code
-export GOPROXY=https://proxy.golang.org
-export GO111MODULE=auto
 
 # Skip setting PATH inside tmux
 if [[ -z $TMUX ]]; then
@@ -93,9 +79,8 @@ if type brew &>/dev/null; then
   FPATH=/usr/local/share/zsh/site-functions:$FPATH
 fi
 
-# cloud sdk things
-source '/usr/local/Caskroom/google-cloud-sdk/latest/google-cloud-sdk/path.zsh.inc'
-source '/usr/local/Caskroom/google-cloud-sdk/latest/google-cloud-sdk/completion.zsh.inc'
-
 autoload -U +X bashcompinit && bashcompinit
-complete -o nospace -C /usr/local/bin/vault vault
+
+if [[ -s ${HOME}/.nytrc ]]; then
+  source ${HOME}/.nytrc
+fi
