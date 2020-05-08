@@ -40,7 +40,7 @@ export HOMEBREW_CASK_OPTS="--appdir=/Applications"
 
 DISABLE_UNTRACKED_FILES_DIRTY="true"
 
-plugins=(git github heroku)
+plugins=(git)
 
 source $ZSH/oh-my-zsh.sh
 
@@ -62,17 +62,18 @@ bindkey "^?" backward-delete-char
 
 export GOPATH=$HOME/Code
 
+# heroku autocomplete setup
+HEROKU_AC_ZSH_SETUP_PATH=/Users/brian/Library/Caches/heroku/autocomplete/zsh_setup && test -f $HEROKU_AC_ZSH_SETUP_PATH && source $HEROKU_AC_ZSH_SETUP_PATH;
+
 # Skip setting PATH inside tmux
 if [[ -z $TMUX ]]; then
   PATH=/Applications/Postgres.app/Contents/Versions/latest/bin:$PATH
-  PATH=$PATH:$HOME/.config/yarn/global/node_modules/.bin
   PATH=$PATH:/usr/local/go/bin
   PATH=$PATH:/usr/local/sbin
   PATH=$PATH:$GOPATH/bin
 fi
 
 source $HOME/.homebrew-github-api-token
-source /usr/local/opt/chruby/share/chruby/chruby.sh
 
 if type brew &>/dev/null; then
   # this used to be: $(brew --prefix)/share
