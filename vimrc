@@ -17,7 +17,7 @@ Plug 'vim-airline/vim-airline-themes' " nice looking status bar
 Plug 'edkolev/tmuxline.vim' " nice looking tmux status bar
 
 " HTML/CSS/JS plugins
-Plug 'docunext/closetag.vim' " closes a matching html tag
+Plug 'alvan/vim-closetag' " closes matching HTML tags
 
 " All of your Plugins must be added before the following line
 call plug#end()            " required
@@ -151,8 +151,7 @@ let g:airline#extensions#tmuxline#enabled = 0
 let g:tmuxline_powerline_separators = 0
 
 " Setup closetag.vim to only work with html files
-autocmd FileType html,xml let b:closetag_html_style=1
-au Filetype html,xml source ~/.vim/bundle/closetag.vim/plugin/closetag.vim
+let g:closetag_filenames = '*.html,*.hbs'
 
 " use go formatting
 autocmd FileType go setlocal tabstop=4 softtabstop=4 shiftwidth=4 noexpandtab
