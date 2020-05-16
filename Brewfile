@@ -7,7 +7,7 @@ mas "Wireguard", id: 1451685025
 mas "Final Cut Pro", id: 424389933
 mas "1Blocker For Safari", id: 1107421413
 mas "Xcode", id: 497799835
-mas "pixelmator-pro", id: 1289583905
+mas "Pixelmator Pro", id: 1289583905
 
 tap "github/gh"
 tap "heroku/brew"
