@@ -1,5 +1,5 @@
 mas "1Password 7 - Password Manager", id: 1333542190
-mas "Ttailscale", id: 1475387142
+mas "Tailscale", id: 1475387142
 mas "Motion", id: 434290957
 mas "Swift Playgrounds", id: 1496833156
 mas "Garageband", id: 682658836
@@ -27,7 +27,6 @@ brew "cmake"
 brew "dfu-util"
 brew "libksba"
 brew "pth"
-brew "dirmngr"
 brew "exif"
 brew "exiftool"
 brew "git"
@@ -35,7 +34,6 @@ brew "git-lfs"
 brew "gmp"
 brew "pinentry"
 brew "gnupg"
-brew "gpg-agent"
 brew "gphoto2"
 brew "hugo"
 brew "jq"
