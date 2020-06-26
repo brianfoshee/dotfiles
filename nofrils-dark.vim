@@ -127,3 +127,7 @@ if g:nofrils_strbackgrounds
     hi String		term=NONE	cterm=NONE	ctermfg=NONE	ctermbg=233	gui=NONE	guifg=NONE	guibg=#121212
 end
 " }}}
+
+" gitcommit hightlighting
+hi diffAdded   ctermfg=green
+hi diffRemoved ctermfg=red
