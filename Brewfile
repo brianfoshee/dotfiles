@@ -2,9 +2,9 @@ mas "1Password 7 - Password Manager", id: 1333542190
 mas "Tailscale", id: 1475387142
 mas "Motion", id: 434290957
 mas "Swift Playgrounds", id: 1496833156
-mas "Garageband", id: 682658836
 mas "Wireguard", id: 1451685025
 mas "Final Cut Pro", id: 424389933
+mas "Logic Pro X", id: 634148309
 mas "1Blocker For Safari", id: 1107421413
 mas "Xcode", id: 497799835
 mas "Pixelmator Pro", id: 1289583905
@@ -66,7 +66,6 @@ cask "firefox"
 cask "google-chrome"
 cask "docker"
 cask "postgres"
-cask "backblaze"
 cask "basecamp"
 cask "carbon-copy-cloner"
 cask "netnewswire"
