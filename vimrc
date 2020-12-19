@@ -158,6 +158,9 @@ autocmd FileType go setlocal tabstop=4 softtabstop=4 shiftwidth=4 noexpandtab
 
 " Setup vim-go to automatically import paths
 let g:go_fmt_command = "goimports"
+" use gopls
+let g:go_def_mode='gopls'
+let g:go_info_mode='gopls'
 au FileType go nmap <leader>d :GoDef<CR>
 au FileType go nmap <leader>ga :GoAlternate<CR>
 au FileType go nmap <leader>gd :GoDecls<CR>
