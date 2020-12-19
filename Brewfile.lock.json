@@ -33,7 +33,7 @@
       },
       "1Password 7": {
         "id": "1333542190",
-        "version": "7.6"
+        "version": "7.7"
       },
       "Developer": {
         "id": "640199958",
@@ -84,6 +84,9 @@
       },
       "cloudflare/cloudflare": {
         "revision": "6e365ebc55fcdf2a72aa3713f58f613becae7b6a"
+      },
+      "homebrew/cask-drivers": {
+        "revision": "85fa581779303ae91f79d94c0e86e400bb461134"
       }
     },
     "brew": {
@@ -1320,6 +1323,12 @@
         "version": "1.8.13",
         "options": {
           "full_name": "arduino"
+        }
+      },
+      "elgato-control-center": {
+        "version": "1.1.3,10337",
+        "options": {
+          "full_name": "elgato-control-center"
         }
       }
     }
