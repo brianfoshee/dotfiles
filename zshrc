@@ -34,6 +34,9 @@ alias swift='xcrun swift -v -sdk $(xcrun --show-sdk-path --sdk macosx)'
 alias tls='tmux list-sessions'
 alias ta='tmux att -t'
 alias tns='tmux new -s'
+# This overwrites the existing zsh function r which is an alias for `fc -e -`
+# https://zsh.sourceforge.io/Doc/Release/Shell-Builtin-Commands.html
+alias r='bin/rails'
 
 # When in vi mode, 0.1 timeout after hitting ESC
 export KEYTIMEOUT=1
