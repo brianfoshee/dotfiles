@@ -7,7 +7,7 @@ endif
 call plug#begin('~/.vim/plugged')
 
 " The best
-Plug 'fatih/vim-go'
+Plug 'fatih/vim-go', { 'do': ':GoUpdateBinaries' }
 
 " The basics
 Plug 'tpope/vim-fugitive' " git wrapper
