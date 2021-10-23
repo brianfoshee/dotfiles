@@ -9,7 +9,7 @@ ZSH_THEME="brianfoshee"
 
 DISABLE_UNTRACKED_FILES_DIRTY="true"
 
-plugins=(git)
+plugins=(git brew)
 
 source $ZSH/oh-my-zsh.sh
 
@@ -48,21 +48,12 @@ export HISTSIZE=10000         # Increases size of history
 export SAVEHIST=10000
 export HISTIGNORE="&:ls:ll:la:l.:tns:tls:tas:gc:ga:pwd:exit:clear:clr:[bf]g:history"
 
-# Set is this is an ARM mac
-una="$(uname -a)"
-if [[ $una == *"arm64"* ]]; then
-  # alias intel homebrew for brews that don't yet support arm
-  alias ibrew='arch -x86_64 /usr/local/bin/brew'
-  # make sure arm homebrew is before intel homebrew
-  export PATH="/opt/homebrew/bin:$PATH"
-fi
-
 export BREW_PREFIX="$(brew --prefix)"
-export EDITOR=$BREW_PREFIX/bin/vim
-export PSQL_EDITOR=$EDITOR
 export HOMEBREW_CASK_OPTS="--appdir=/Applications"
 export HOMEBREW_BUNDLE_NO_LOCK=true
 export GOPATH=$HOME/Code
+export EDITOR=$BREW_PREFIX/bin/vim
+export PSQL_EDITOR=$EDITOR
 
 # up/down keys use history search using everything up to cursor, not just the
 # first word (which would be history-search-backward and history-search-forward
