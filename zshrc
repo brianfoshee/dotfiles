@@ -9,7 +9,7 @@ ZSH_THEME="brianfoshee"
 
 DISABLE_UNTRACKED_FILES_DIRTY="true"
 
-plugins=(git brew)
+plugins=(git)
 
 source $ZSH/oh-my-zsh.sh
 
