@@ -18,18 +18,17 @@ plugins=(git)
 
 source $ZSH/oh-my-zsh.sh
 
-# Skip setting PATH inside tmux
-if [[ -z $TMUX ]]; then
-fi
-
 # If Apple Silicon use new homebrew path
 una="$(uname -a)"
 if [[ $una == *"arm64"* ]]; then
   eval "$(/opt/homebrew/bin/brew shellenv)"
 fi
 
-# setup rbenv
-eval "$(rbenv init - zsh)"
+# Skip some things if in tmux to avoid duplicate PATH entries
+if [[ -z $TMUX ]]; then
+  # setup rbenv
+  eval "$(rbenv init - zsh)"
+fi
 
 # for setting up git / pgp
 # https://gist.github.com/troyfontaine/18c9146295168ee9ca2b30c00bd1b41e
