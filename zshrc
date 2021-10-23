@@ -13,6 +13,12 @@ plugins=(git)
 
 source $ZSH/oh-my-zsh.sh
 
+# If Apple Silicon use new homebrew path
+una="$(uname -a)"
+if [[ $una == *"arm64"* ]]; then
+  eval "$(/opt/homebrew/bin/brew shellenv)"
+fi
+
 # for setting up git / pgp
 # https://gist.github.com/troyfontaine/18c9146295168ee9ca2b30c00bd1b41e
 export GPG_TTY=`tty`
@@ -54,12 +60,6 @@ export HOMEBREW_BUNDLE_NO_LOCK=true
 export GOPATH=$HOME/Code
 export EDITOR=$BREW_PREFIX/bin/vim
 export PSQL_EDITOR=$EDITOR
-
-# If Apple Silicon use new homebrew path
-una="$(uname -a)"
-if [[ $una == *"arm64"* ]]; then
-  eval "$(/opt/homebrew/bin/brew shellenv)"
-fi
 
 # up/down keys use history search using everything up to cursor, not just the
 # first word (which would be history-search-backward and history-search-forward
