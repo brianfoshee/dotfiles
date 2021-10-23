@@ -1,3 +1,8 @@
+# Language
+export LANG="en_US.UTF-8"
+export LC_ALL="en_US.UTF-8"
+export SHELL="/bin/zsh"
+
 # Path to your oh-my-zsh configuration.
 export ZSH=$HOME/.oh-my-zsh
 
@@ -13,20 +18,22 @@ plugins=(git)
 
 source $ZSH/oh-my-zsh.sh
 
+# Skip setting PATH inside tmux
+if [[ -z $TMUX ]]; then
+fi
+
 # If Apple Silicon use new homebrew path
 una="$(uname -a)"
 if [[ $una == *"arm64"* ]]; then
   eval "$(/opt/homebrew/bin/brew shellenv)"
 fi
 
+# setup rbenv
+eval "$(rbenv init - zsh)"
+
 # for setting up git / pgp
 # https://gist.github.com/troyfontaine/18c9146295168ee9ca2b30c00bd1b41e
 export GPG_TTY=`tty`
-
-# Language
-export LANG="en_US.UTF-8"
-export LC_ALL="en_US.UTF-8"
-export SHELL="/bin/zsh"
 
 # Aliases
 alias gs='git status -s'
@@ -76,9 +83,6 @@ if type brew &>/dev/null; then
 fi
 
 # autoload -U +X bashcompinit && bashcompinit
-
-# setup rbenv
-eval "$(rbenv init -)"
 
 if [[ -s ${HOME}/.nytrc ]]; then
   source ${HOME}/.nytrc
