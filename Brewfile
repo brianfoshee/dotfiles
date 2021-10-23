@@ -10,10 +10,10 @@ tap "stripe/stripe-cli"
 brew "ack"
 # GNU database manager
 brew "gdbm"
-# Library for command-line editing
-brew "readline"
 # General-purpose data compression with high compression ratio
 brew "xz"
+# Interpreted, interactive, object-oriented programming language
+brew "python@3.9"
 # B2 Cloud Storage Command-Line Tools
 brew "b2-tools"
 # Parser generator
@@ -32,12 +32,14 @@ brew "gh"
 brew "git"
 # Git extension for versioning large files
 brew "git-lfs"
-# Portable Foreign Function Interface library
-brew "libffi"
+# Core application library for C
+brew "glib"
 # GNU multiple precision arithmetic library
 brew "gmp"
-# HTTP/2 C Library
-brew "nghttp2"
+# Validating, recursive, caching DNS resolver
+brew "unbound"
+# GNU Transport Layer Security (TLS) Library
+brew "gnutls"
 # X.509 and CMS library
 brew "libksba"
 # Passphrase entry dialog utilizing the Assuan protocol
@@ -52,14 +54,20 @@ brew "hugo"
 brew "jq"
 # Command-line, double-entry accounting tool
 brew "ledger"
+# Library that provides automatic proxy configuration management
+brew "libproxy"
 # YAML Parser
 brew "libyaml"
 # Text-based web browser
 brew "lynx"
 # Mac App Store command-line interface
 brew "mas"
+# HTTP/2 C Library
+brew "nghttp2"
 # Small build system for use with gyp or CMake
 brew "ninja"
+# Platform built on V8 to build network applications
+brew "node"
 # Pinentry for GPG on Mac
 brew "pinentry-mac"
 # Protocol buffers (Google's data interchange format)
@@ -68,14 +76,14 @@ brew "protobuf"
 brew "pth"
 # QR Code generation
 brew "qrencode"
+# Cross-platform application and UI framework
+brew "qt"
 # Install various Ruby versions and implementations
 brew "ruby-build"
 # Ruby version manager
 brew "rbenv"
 # Persistent key-value database, with built-in net interface
 brew "redis"
-# Powerful, clean, object-oriented scripting language
-brew "ruby"
 # Safe, concurrent, practical language
 brew "rust"
 # Database of common MIME types
@@ -123,6 +131,8 @@ cask "firefox"
 cask "google-chrome"
 # Free and open-source RSS reader
 cask "netnewswire"
+# App wrapper for Postgres
+cask "postgres-unofficial"
 # Batch image processor
 cask "retrobatch"
 # Tool that provides consistent, highly configurable symbols for apps
