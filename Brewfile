@@ -123,7 +123,6 @@ cask "firefox"
 cask "google-chrome"
 # Free and open-source RSS reader
 cask "netnewswire"
-cask "postgres"
 # Batch image processor
 cask "retrobatch"
 # Tool that provides consistent, highly configurable symbols for apps
