@@ -61,6 +61,7 @@ export BREW_PREFIX="$(brew --prefix)"
 export EDITOR=$BREW_PREFIX/bin/vim
 export PSQL_EDITOR=$EDITOR
 export HOMEBREW_CASK_OPTS="--appdir=/Applications"
+export HOMEBREW_BUNDLE_NO_LOCK=true
 export GOPATH=$HOME/Code
 
 # up/down keys use history search using everything up to cursor, not just the
