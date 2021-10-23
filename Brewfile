@@ -5,7 +5,6 @@ tap "homebrew/bundle"
 tap "homebrew/cask"
 tap "homebrew/cask-drivers"
 tap "homebrew/core"
-tap "hybridgroup/tools"
 tap "stripe/stripe-cli"
 # Search tool like grep, but optimized for programmers
 brew "ack"
