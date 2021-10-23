@@ -55,6 +55,12 @@ export GOPATH=$HOME/Code
 export EDITOR=$BREW_PREFIX/bin/vim
 export PSQL_EDITOR=$EDITOR
 
+# If Apple Silicon use new homebrew path
+una="$(uname -a)"
+if [[ $una == *"arm64"* ]]; then
+  eval "$(/opt/homebrew/bin/brew shellenv)"
+fi
+
 # up/down keys use history search using everything up to cursor, not just the
 # first word (which would be history-search-backward and history-search-forward
 bindkey '\e[A' history-beginning-search-backward
