@@ -116,6 +116,7 @@ brew "heroku/brew/heroku"
 brew "stripe/stripe-cli/stripe"
 # Electronics prototyping platform
 cask "arduino"
+cask "backblaze"
 cask "basecamp"
 # Hard disk backup and cloning utility
 cask "carbon-copy-cloner"
