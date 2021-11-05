@@ -56,6 +56,9 @@ set nocursorline
 set background=dark
 colorscheme nofrils-dark
 "colorscheme brianfoshee
+" https://vi.stackexchange.com/questions/16148/slow-vim-escape-from-insert-mode
+set timeoutlen=1000
+set ttimeoutlen=5
 
 " Set spacebar to leader
 let mapleader = "\<Space>"

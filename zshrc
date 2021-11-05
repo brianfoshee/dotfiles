@@ -49,9 +49,6 @@ alias tns='tmux new -s'
 # https://zsh.sourceforge.io/Doc/Release/Shell-Builtin-Commands.html
 alias r='bin/rails'
 
-# When in vi mode, 0.1 timeout after hitting ESC
-export KEYTIMEOUT=1
-
 # History control
 export HISTCONTROL=erasedups  # Ignore duplicate entries in history
 export HISTFILE=~/.zsh_history
