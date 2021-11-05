@@ -15,6 +15,8 @@ Plug 'ctrlpvim/ctrlp.vim' " search for files
 Plug 'vim-airline/vim-airline' " nice looking status bar
 Plug 'vim-airline/vim-airline-themes' " nice looking status bar
 Plug 'edkolev/tmuxline.vim' " nice looking tmux status bar
+" Plug 'dense-analysis/ale' " linter, mostly to get this:
+" https://github.com/btford/write-good
 
 " HTML/CSS/JS plugins
 Plug 'alvan/vim-closetag' " closes matching HTML tags
