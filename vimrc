@@ -73,6 +73,12 @@ inoremap <down>  <nop>
 inoremap <left>  <nop>
 inoremap <right> <nop>
 
+" https://vonheikemen.github.io/devlog/tools/using-netrw-vim-builtin-file-explorer/
+" open Netrw in the directory of the current file
+nnoremap <leader>dd :Lexplore %:p:h<CR>
+" open Netrw in the current working directory
+nnoremap <Leader>da :Lexplore<CR>
+
 " Enable spell checking for certain filetypes
 " autocmd FileType gitcommit setlocal spell
 " Turn on syntax highlighting for git commits
