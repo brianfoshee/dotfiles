@@ -12,8 +12,6 @@ brew "ack"
 brew "gdbm"
 # General-purpose data compression with high compression ratio
 brew "xz"
-# Interpreted, interactive, object-oriented programming language
-brew "python@3.9"
 # B2 Cloud Storage Command-Line Tools
 brew "b2-tools"
 # Parser generator
@@ -32,6 +30,8 @@ brew "gh"
 brew "git"
 # Git extension for versioning large files
 brew "git-lfs"
+# Interpreted, interactive, object-oriented programming language
+brew "python@3.9"
 # Core application library for C
 brew "glib"
 # GNU multiple precision arithmetic library
@@ -116,7 +116,9 @@ brew "heroku/brew/heroku"
 brew "stripe/stripe-cli/stripe"
 # Electronics prototyping platform
 cask "arduino"
+# Data backup and storage service
 cask "backblaze"
+# All-In-One Toolkit for Working Remotely
 cask "basecamp"
 # Hard disk backup and cloning utility
 cask "carbon-copy-cloner"
