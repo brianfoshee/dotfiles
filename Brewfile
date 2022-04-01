@@ -20,6 +20,8 @@ brew "bison"
 brew "cmake"
 # USB programmer
 brew "dfu-util"
+# Command-line tool to interact with exercism.io
+brew "exercism"
 # Read, write, modify, and display EXIF data on the command-line
 brew "exif"
 # Perl lib for reading and writing EXIF metadata
@@ -140,10 +142,13 @@ cask "postgres-unofficial"
 cask "retrobatch"
 # Tool that provides consistent, highly configurable symbols for apps
 cask "sf-symbols"
+# Install and switch between multiple versions of Xcode
+cask "xcodes"
 mas "1Blocker", id: 1365531024
 mas "1Password 7", id: 1333542190
 mas "Developer", id: 640199958
 mas "Final Cut Pro", id: 424389933
+mas "GarageBand", id: 682658836
 mas "Keynote", id: 409183694
 mas "Logic Pro", id: 634148309
 mas "Motion", id: 434290957
