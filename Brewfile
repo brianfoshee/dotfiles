@@ -1,4 +1,5 @@
 tap "cloudflare/cloudflare"
+tap "crunchydata/brew"
 tap "github/gh"
 tap "heroku/brew"
 tap "homebrew/bundle"
@@ -8,40 +9,40 @@ tap "homebrew/core"
 tap "stripe/stripe-cli"
 # Search tool like grep, but optimized for programmers
 brew "ack"
-# GNU database manager
-brew "gdbm"
 # General-purpose data compression with high compression ratio
 brew "xz"
 # B2 Cloud Storage Command-Line Tools
 brew "b2-tools"
 # Parser generator
 brew "bison"
+# Core application library for C
+brew "glib"
 # Cross-platform make
 brew "cmake"
 # USB programmer
 brew "dfu-util"
+# Convert text between DOS, UNIX, and Mac formats
+brew "dos2unix"
 # Command-line tool to interact with exercism.io
 brew "exercism"
 # Read, write, modify, and display EXIF data on the command-line
 brew "exif"
 # Perl lib for reading and writing EXIF metadata
 brew "exiftool"
-# GitHub command-line tool
-brew "gh"
-# Distributed revision control system
-brew "git"
-# Git extension for versioning large files
-brew "git-lfs"
-# Interpreted, interactive, object-oriented programming language
-brew "python@3.9"
-# Core application library for C
-brew "glib"
 # GNU multiple precision arithmetic library
 brew "gmp"
 # Validating, recursive, caching DNS resolver
 brew "unbound"
 # GNU Transport Layer Security (TLS) Library
 brew "gnutls"
+# GNU database manager
+brew "gdbm"
+# GitHub command-line tool
+brew "gh"
+# Distributed revision control system
+brew "git"
+# Git extension for versioning large files
+brew "git-lfs"
 # X.509 and CMS library
 brew "libksba"
 # Passphrase entry dialog utilizing the Assuan protocol
@@ -76,6 +77,8 @@ brew "pinentry-mac"
 brew "protobuf"
 # GNU Portable THreads
 brew "pth"
+# Interpreted, interactive, object-oriented programming language
+brew "python@3.9"
 # QR Code generation
 brew "qrencode"
 # Cross-platform application and UI framework
@@ -84,6 +87,8 @@ brew "qt"
 brew "ruby-build"
 # Ruby version manager
 brew "rbenv"
+# Rsync for cloud storage
+brew "rclone"
 # Persistent key-value database, with built-in net interface
 brew "redis"
 # Safe, concurrent, practical language
@@ -112,6 +117,8 @@ brew "youtube-dl"
 brew "zsh"
 # Cloudflare Tunnel
 brew "cloudflare/cloudflare/cloudflared"
+# CLI for Crunchy Bridge
+brew "crunchydata/brew/cb"
 # Everything you need to get started with Heroku
 brew "heroku/brew/heroku"
 # Stripe CLI utility
@@ -128,7 +135,7 @@ cask "carbon-copy-cloner"
 cask "chromedriver"
 # App to build and share containerized applications and microservices
 cask "docker"
-# Control your Elgato Key Lights
+# Control your Elgato key lights
 cask "elgato-control-center"
 # Web browser
 cask "firefox"
@@ -145,10 +152,12 @@ cask "sf-symbols"
 # Install and switch between multiple versions of Xcode
 cask "xcodes"
 mas "1Blocker", id: 1365531024
-mas "1Password 7", id: 1333542190
+mas "com.kirsteins.chords-and-scales-mac", id: 1435473426
 mas "Developer", id: 640199958
+mas "field kit", id: 1612653346
 mas "Final Cut Pro", id: 424389933
 mas "GarageBand", id: 682658836
+mas "JSONPeep", id: 1458969831
 mas "Keynote", id: 409183694
 mas "Logic Pro", id: 634148309
 mas "Motion", id: 434290957
@@ -158,6 +167,6 @@ mas "Pastel", id: 413897608
 mas "Pixelmator Pro", id: 1289583905
 mas "Playgrounds", id: 1496833156
 mas "Tailscale", id: 1475387142
-mas "Twitter", id: 1482454543
+mas "Tokenary", id: 1375542355
 mas "WireGuard", id: 1451685025
 mas "Xcode", id: 497799835
