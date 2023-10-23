@@ -62,6 +62,7 @@ export HOMEBREW_BUNDLE_NO_LOCK=true
 export GOPATH=$HOME/Code
 export EDITOR=$BREW_PREFIX/bin/vim
 export PSQL_EDITOR=$EDITOR
+export THOR_MERGE=$BREW_PREFIX/bin/vimdiff
 
 # up/down keys use history search using everything up to cursor, not just the
 # first word (which would be history-search-backward and history-search-forward
