@@ -21,6 +21,10 @@ Plug 'edkolev/tmuxline.vim' " nice looking tmux status bar
 " HTML/CSS/JS plugins
 Plug 'alvan/vim-closetag' " closes matching HTML tags
 
+" Ruby plugin
+Plug 'vim-ruby/vim-ruby'
+Plug 'prabirshrestha/vim-lsp'
+
 " All of your Plugins must be added before the following line
 call plug#end()            " required
 
@@ -109,6 +113,7 @@ let g:ctrlp_user_command = 'ag %s --ignore-case --skip-vcs-ignores --nocolor --n
       \ --ignore "*.swp"
       \ --ignore "*.swo"
       \ --ignore "*.pyc"
+      \ --ignore ".keep"
       \ --ignore "vendor/"
       \ --ignore "tmp/"
       \ --ignore "dist/"
@@ -175,3 +180,18 @@ let g:go_info_mode='gopls'
 au FileType go nmap <leader>d :GoDef<CR>
 au FileType go nmap <leader>ga :GoAlternate<CR>
 au FileType go nmap <leader>gd :GoDecls<CR>
+
+" Ruby
+" Use standard if available
+" https://github.com/standardrb/standard/wiki/IDE:-vim
+if executable('standardrb')
+  au User lsp_setup call lsp#register_server({
+        \ 'name': 'standardrb',
+        \ 'cmd': ['standardrb', '--lsp'],
+        \ 'allowlist': ['ruby'],
+        \ })
+endif
+
+" make vim-ruby use the same indentation as standardrb
+let g:ruby_indent_assignment_style = 'variable'
+let g:ruby_indent_hanging_elements = 0
