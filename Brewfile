@@ -9,6 +9,8 @@ tap "homebrew/core"
 tap "stripe/stripe-cli"
 # Search tool like grep, but optimized for programmers
 brew "ack"
+# JPEG image codec that aids compression and decompression
+brew "jpeg-turbo"
 # General-purpose data compression with high compression ratio
 brew "xz"
 # B2 Cloud Storage Command-Line Tools
@@ -53,6 +55,8 @@ brew "gnupg"
 brew "gphoto2"
 # Configurable static site generator
 brew "hugo"
+# Database of common MIME types
+brew "shared-mime-info"
 # Lightweight and flexible command-line JSON processor
 brew "jq"
 # Command-line, double-entry accounting tool
@@ -93,14 +97,14 @@ brew "rclone"
 brew "redis"
 # Safe, concurrent, practical language
 brew "rust"
-# Database of common MIME types
-brew "shared-mime-info"
 # Code-search similar to ack
 brew "the_silver_searcher"
 # Terminal multiplexer
 brew "tmux"
 # Vi 'workalike' with many additional features
 brew "vim"
+# Image processing library
+brew "vips"
 # Executes a program periodically, showing output fullscreen
 brew "watch"
 # Watch files and take action when they change
@@ -108,7 +112,7 @@ brew "watchman"
 # Internet file retriever
 brew "wget"
 # PDF viewer
-brew "xpdf"
+brew "xpdf", link: false
 # JavaScript package manager
 brew "yarn"
 # Download YouTube videos from the command-line
@@ -127,16 +131,12 @@ brew "stripe/stripe-cli/stripe"
 cask "arduino"
 # Data backup and storage service
 cask "backblaze"
-# All-In-One Toolkit for Working Remotely
-cask "basecamp"
 # Hard disk backup and cloning utility
 cask "carbon-copy-cloner"
 # Automated testing of webapps for Google Chrome
 cask "chromedriver"
 # App to build and share containerized applications and microservices
 cask "docker"
-# Control your Elgato key lights
-cask "elgato-control-center"
 # Web browser
 cask "firefox"
 # Web browser
@@ -151,12 +151,10 @@ cask "retrobatch"
 cask "sf-symbols"
 # Install and switch between multiple versions of Xcode
 cask "xcodes"
-mas "1Blocker", id: 1365531024
 mas "com.kirsteins.chords-and-scales-mac", id: 1435473426
 mas "Developer", id: 640199958
 mas "field kit", id: 1612653346
 mas "Final Cut Pro", id: 424389933
-mas "GarageBand", id: 682658836
 mas "JSONPeep", id: 1458969831
 mas "Keynote", id: 409183694
 mas "Logic Pro", id: 634148309
