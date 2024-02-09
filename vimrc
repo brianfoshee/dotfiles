@@ -98,6 +98,7 @@ let g:ctrlp_user_command = 'ag %s --ignore-case --skip-vcs-ignores --nocolor --n
       \ --ignore ".hg/"
       \ --ignore ".vagrant/"
       \ --ignore ".cache/"
+      \ --ignore ".caches/"
       \ --ignore ".gem/"
       \ --ignore ".config/"
       \ --ignore ".node-gyp/"
