@@ -18,6 +18,10 @@ plugins=(git)
 
 source $ZSH/oh-my-zsh.sh
 
+# configure oh-my-zsh updates
+zstyle ':omz:update' mode auto
+zstyle ':omz:update' frequency 14
+
 # If Apple Silicon use new homebrew path
 una="$(uname -a)"
 if [[ $una == *"arm64"* ]]; then
@@ -83,3 +87,6 @@ fi
 if [[ -s ${HOME}/.nytrc ]]; then
   source ${HOME}/.nytrc
 fi
+
+# add ssh key for use with git commit signing
+ssh-add --apple-use-keychain ~/.ssh/github &>/dev/null

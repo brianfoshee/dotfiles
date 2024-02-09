@@ -167,7 +167,7 @@ let g:airline#extensions#tmuxline#enabled = 0
 let g:tmuxline_powerline_separators = 0
 
 " Setup closetag.vim to only work with html files
-let g:closetag_filenames = '*.html,*.hbs'
+let g:closetag_filenames = '*.html,*.html.erb'
 
 " use go formatting
 autocmd FileType go setlocal tabstop=4 softtabstop=4 shiftwidth=4 noexpandtab
@@ -180,18 +180,3 @@ let g:go_info_mode='gopls'
 au FileType go nmap <leader>d :GoDef<CR>
 au FileType go nmap <leader>ga :GoAlternate<CR>
 au FileType go nmap <leader>gd :GoDecls<CR>
-
-" Ruby
-" Use standard if available
-" https://github.com/standardrb/standard/wiki/IDE:-vim
-if executable('standardrb')
-  au User lsp_setup call lsp#register_server({
-        \ 'name': 'standardrb',
-        \ 'cmd': ['standardrb', '--lsp'],
-        \ 'allowlist': ['ruby'],
-        \ })
-endif
-
-" make vim-ruby use the same indentation as standardrb
-let g:ruby_indent_assignment_style = 'variable'
-let g:ruby_indent_hanging_elements = 0
