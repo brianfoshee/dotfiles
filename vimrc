@@ -15,8 +15,7 @@ Plug 'ctrlpvim/ctrlp.vim' " search for files
 Plug 'vim-airline/vim-airline' " nice looking status bar
 Plug 'vim-airline/vim-airline-themes' " nice looking status bar
 Plug 'edkolev/tmuxline.vim' " nice looking tmux status bar
-" Plug 'dense-analysis/ale' " linter, mostly to get this:
-" https://github.com/btford/write-good
+Plug 'dense-analysis/ale' " linter, mostly to get this:
 
 " HTML/CSS/JS plugins
 Plug 'alvan/vim-closetag' " closes matching HTML tags
@@ -181,3 +180,17 @@ let g:go_info_mode='gopls'
 au FileType go nmap <leader>d :GoDef<CR>
 au FileType go nmap <leader>ga :GoAlternate<CR>
 au FileType go nmap <leader>gd :GoDecls<CR>
+
+" Setup ale with prettier linter
+let g:ale_fixers = {
+\   'javascript': ['prettier'],
+\   'css': ['prettier'],
+\   'eruby': ['prettier'],
+\   'html': ['prettier']
+\}
+" prettier config
+let g:ale_javascript_prettier_options = '--plugin=prettier-plugin-tailwindcss'
+" don't run every linter and fixer
+let g:ale_linters_explicit = 1
+" fix lint errors on save
+let g:ale_fix_on_save = 1
