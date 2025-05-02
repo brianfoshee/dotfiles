@@ -83,11 +83,10 @@ if type brew &>/dev/null; then
   FPATH=$BREW_PREFIX/share/zsh/site-functions:$FPATH
 fi
 
-# autoload -U +X bashcompinit && bashcompinit
+# add uv binaries to path
+export PATH="/Users/brian/.local/bin:$PATH"
 
-if [[ -s ${HOME}/.nytrc ]]; then
-  source ${HOME}/.nytrc
-fi
+# autoload -U +X bashcompinit && bashcompinit
 
 # add ssh key for use with git commit signing
 ssh-add --apple-use-keychain ~/.ssh/github &>/dev/null
