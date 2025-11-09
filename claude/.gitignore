@@ -1,0 +1,13 @@
+debug/
+file-history/
+plugins/
+projects/
+session-env/
+shell-snapshots/
+statsig/
+todos/
+history.jsonl
+settings.json
+.claude.json
+.credentials.json
+tailwind_all_components.json
