@@ -15,7 +15,6 @@ Plug 'ctrlpvim/ctrlp.vim' " search for files
 Plug 'vim-airline/vim-airline' " nice looking status bar
 Plug 'vim-airline/vim-airline-themes' " nice looking status bar
 Plug 'edkolev/tmuxline.vim' " nice looking tmux status bar
-Plug 'dense-analysis/ale' " linter, mostly to get this:
 
 " HTML/CSS/JS plugins
 Plug 'alvan/vim-closetag' " closes matching HTML tags
@@ -23,6 +22,9 @@ Plug 'alvan/vim-closetag' " closes matching HTML tags
 " Ruby plugin
 Plug 'vim-ruby/vim-ruby'
 Plug 'prabirshrestha/vim-lsp'
+
+" Terraform
+Plug 'hashivim/vim-terraform'
 
 " All of your Plugins must be added before the following line
 call plug#end()            " required
@@ -82,6 +84,9 @@ nnoremap <leader>dd :Lexplore %:p:h<CR>
 " open Netrw in the current working directory
 nnoremap <Leader>da :Lexplore<CR>
 
+" Explore window 30%
+let g:netrw_winsize = 20
+
 " Enable spell checking for certain filetypes
 " autocmd FileType gitcommit setlocal spell
 " Turn on syntax highlighting for git commits
@@ -117,6 +122,9 @@ let g:ctrlp_user_command = 'ag %s --ignore-case --skip-vcs-ignores --nocolor --n
       \ --ignore "vendor/"
       \ --ignore "tmp/"
       \ --ignore "dist/"
+      \ --ignore ".terraform"
+      \ --ignore "*.xcodeproj/"
+      \ --ignore "Assets.xcassets/"
       \ -g ""'
 
 let g:ctrlp_map = '<leader>p'
@@ -144,9 +152,61 @@ autocmd BufNewFile,BufReadPost *.md set filetype=markdown
 au BufRead,BufNewFile *.md setlocal textwidth=80
 
 " Autocommand to run git stripspace on file save
-au BufWritePre,FileWritePre * let b:winview = winsaveview() | let b:tmpundofile=tempname() | exe 'wundo! ' . b:tmpundofile
-au BufWritePre * :silent %!git stripspace
-au BufWritePost,FileWritePost * if exists('b:tmpundofile') | silent! exe 'rundo ' . b:tmpundofile | call delete(b:tmpundofile) | endif | if exists('b:winview') | call winrestview(b:winview) | unlet! b:winview | endif
+augroup GitStripspace
+  autocmd!
+
+  " Define function to check if file should be processed
+  function! s:ShouldStripWhitespace()
+    " File types where trailing whitespace is significant or where tooling
+    " exists to handle it separately.
+    let excluded_extensions = ['md', 'tf', 'go']
+    let current_ext = expand('%:e')
+    return index(excluded_extensions, current_ext) == -1 && executable('git')
+  endfunction
+
+  " Function to safely run stripspace with error handling
+  function! s:StripWhitespace()
+    if !s:ShouldStripWhitespace()
+      return
+    endif
+
+    " Save state
+    let b:winview = winsaveview()
+    let b:tmpundofile = tempname()
+
+    try
+      execute 'wundo! ' . b:tmpundofile
+      silent %!git stripspace
+    catch
+      " Restore view on error
+      if exists('b:winview')
+        call winrestview(b:winview)
+      endif
+      " Clean up temp file on error
+      if exists('b:tmpundofile') && filereadable(b:tmpundofile)
+        call delete(b:tmpundofile)
+      endif
+      throw v:exception
+    endtry
+  endfunction
+
+  " Function to restore state after write
+  function! s:RestoreState()
+    if exists('b:tmpundofile') && filereadable(b:tmpundofile)
+      silent! execute 'rundo ' . b:tmpundofile
+      call delete(b:tmpundofile)
+      unlet! b:tmpundofile
+    endif
+
+    if exists('b:winview')
+      call winrestview(b:winview)
+      unlet! b:winview
+    endif
+  endfunction
+
+  autocmd BufWritePre * call s:StripWhitespace()
+  autocmd BufWritePost * call s:RestoreState()
+augroup END
 
 " Use fonts
 let g:airline_powerline_fonts = 0
@@ -180,17 +240,3 @@ let g:go_info_mode='gopls'
 au FileType go nmap <leader>d :GoDef<CR>
 au FileType go nmap <leader>ga :GoAlternate<CR>
 au FileType go nmap <leader>gd :GoDecls<CR>
-
-" Setup ale with prettier linter
-let g:ale_fixers = {
-\   'javascript': ['prettier'],
-\   'css': ['prettier'],
-\   'eruby': ['prettier'],
-\   'html': ['prettier']
-\}
-" prettier config
-let g:ale_javascript_prettier_options = '--plugin=prettier-plugin-tailwindcss'
-" don't run every linter and fixer
-let g:ale_linters_explicit = 1
-" fix lint errors on save
-let g:ale_fix_on_save = 1
