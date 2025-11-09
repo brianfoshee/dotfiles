@@ -52,6 +52,8 @@ alias tns='tmux new -s'
 # This overwrites the existing zsh function r which is an alias for `fc -e -`
 # https://zsh.sourceforge.io/Doc/Release/Shell-Builtin-Commands.html
 alias r='bin/rails'
+# setup ESP IDF for building for ESP
+alias export-idf='. $HOME/Code/esp/esp-idf/export.sh'
 
 # History control
 export HISTCONTROL=erasedups  # Ignore duplicate entries in history
@@ -75,8 +77,16 @@ bindkey '\e[A' history-beginning-search-backward
 bindkey '\e[B' history-beginning-search-forward
 bindkey "^?" backward-delete-char
 
-if [[ -s ${HOME}/.homebrew-github-api-token ]]; then
-  source $HOME/.homebrew-github-api-token
+# export a github api token for:
+#   - so homebrew commands don't hit api limits
+#   - For claude to run gh cli commands and access the github MCP server
+if [[ -s ${HOME}/.github-api-token ]]; then
+  source $HOME/.github-api-token
+fi
+
+# export my anthropic api token
+if [[ -s ${HOME}/.anthropic-api-token ]]; then
+  source $HOME/.anthropic-api-token
 fi
 
 if type brew &>/dev/null; then
@@ -90,3 +100,7 @@ export PATH="/Users/brian/.local/bin:$PATH"
 
 # add ssh key for use with git commit signing
 ssh-add --apple-use-keychain ~/.ssh/github &>/dev/null
+
+# Added by LM Studio CLI (lms)
+export PATH="$PATH:/Users/brian/.lmstudio/bin"
+# End of LM Studio CLI section
