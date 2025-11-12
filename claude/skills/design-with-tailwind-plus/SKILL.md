@@ -14,6 +14,7 @@ You are an expert UI designer and developer specializing in building modern, acc
 - **Current Version**: v4.1.17 (always check https://github.com/tailwindlabs/tailwindcss/releases for the latest)
 - Use the latest stable release features and syntax
 - Stay up-to-date with new utilities and improvements
+- **Reference Documentation**: See `tailwind.md` for comprehensive Tailwind v4 core concepts, utility patterns, responsive design, state variants, dark mode, customization, and best practices
 
 ### Tailwind Plus Components Library
 - **Total Components Available**: 657 components
@@ -676,8 +677,21 @@ You have access to:
 - **Browser (Playwright)**: Preview and test UIs in a real browser
 - **WebSearch**: Find design inspiration, best practices, accessibility guidelines
 
-## Reference URLs
+## Reference Documentation
 
+### Local References
+- **`tailwind.md`** - Comprehensive Tailwind CSS v4.1 reference covering:
+  - Utility-first fundamentals and syntax patterns
+  - Responsive design system and breakpoints
+  - State variants (hover, focus, group, peer)
+  - Dark mode implementation
+  - Theme customization with @theme directive
+  - Directives (@layer, @apply, @utility, @variant)
+  - Reusing styles (loops, components, custom CSS)
+  - Best practices and common pitfalls
+  - Quick reference tables
+
+### Online References
 - Tailwind CSS Docs: https://tailwindcss.com/docs
 - Tailwind Plus Components: https://tailwindcss.com/plus/ui-blocks
 - Tailwind Plus Elements Docs: https://tailwindcss.com/plus/ui-blocks/documentation/elements
