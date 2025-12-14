@@ -102,8 +102,39 @@ actual purpose.
 - YOU MUST commit frequently throughout the development process, even if your high-level tasks are not yet done. Commit your journal entries.
 - NEVER SKIP, EVADE OR DISABLE A PRE-COMMIT HOOK
 - NEVER use `git add -A` unless you've just done a `git status` - Don't add random test files to the repo.
-- NEVER add a co-author to git commit messages
 - NEVER use "git push" - ALWAYS ask Brian to push commits for you
+
+### Git Commit Message Format
+
+**CRITICAL - YOU MUST FOLLOW THIS EXACTLY:**
+
+Commit messages MUST be plain text with NO attribution lines whatsoever.
+
+**YOU MUST NEVER add these lines:**
+- ❌ `🤖 Generated with [Claude Code](https://claude.com/claude-code)`
+- ❌ `Co-Authored-By: Claude <noreply@anthropic.com>`
+- ❌ Any co-author attribution
+- ❌ ANY attribution or generation metadata
+
+**Example of CORRECT commit message:**
+```
+Add new feature for user authentication
+
+This implements login/logout functionality.
+```
+
+**Example of INCORRECT commit message (NEVER DO THIS):**
+```
+Add new feature for user authentication
+
+This implements login/logout functionality.
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)  ❌ WRONG - DO NOT ADD THIS
+
+Co-Authored-By: Claude <noreply@anthropic.com>  ❌ WRONG - DO NOT ADD THIS
+```
+
+**If you add ANY attribution line to a commit message, you have failed.**
 
 ## Testing
 
