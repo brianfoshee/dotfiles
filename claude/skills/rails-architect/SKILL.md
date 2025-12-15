@@ -564,6 +564,47 @@ end
 
 This skill includes reference documentation for production-proven patterns extracted from real Rails 8.1 applications. When relevant to the task, reference these guides for detailed implementation guidance:
 
+### Authorization and Roles
+**File:** `docs/authorization-and-roles.md`
+
+Complete guide to user roles and authorization (authentication covered separately):
+- Minimal role design (owner, admin, member, system)
+- Identity vs User separation for multi-tenancy
+- Authorization layers (account access, resource scoping, action permissions, role guards)
+- Board-level access control patterns
+- Permission methods on User model
+- Authorization through association scoping
+- Testing authorization
+
+**When to reference:**
+- User asks about roles or permissions
+- User wants to implement authorization
+- User asks about access control
+- User needs multi-tenant user management
+- User asks "how do I check if a user can..."
+- User wants to implement admin features
+
+### View Patterns and Organization
+**File:** `docs/view-patterns.md`
+
+Complete guide to Rails view architecture and patterns:
+- Variable usage (instance variables vs locals)
+- When to use helpers vs inline ERB logic
+- Partial organization and extraction strategies
+- Display variants pattern (preview/perma/mini)
+- Turbo/Hotwire integration patterns
+- Composition via yield and content_for
+- Caching strategies
+- Testing views
+
+**When to reference:**
+- User asks about view organization
+- User wants to know when to extract helpers or partials
+- User asks about Turbo Streams or Turbo Frames
+- User needs view architecture guidance
+- User asks "should this be in a helper or the view?"
+- User wants to organize complex views
+
 ### Passkey Authentication (WebAuthn)
 **File:** `docs/passkey-authentication.md`
 
@@ -605,6 +646,7 @@ Production-proven testing strategy (760+ tests):
 - Test distribution: 61% model, 30% controller, 6% integration, <1% system
 - System test avoidance guidelines
 - Testing JSON fields with ActiveRecord Store
+- Advanced testing patterns (multi-tenancy, VCR, fixtures, Turbo Streams)
 - Test maintenance best practices
 
 **When to reference:**
@@ -666,6 +708,7 @@ Be specific, cite patterns from production Rails apps, and always explain *why* 
 
 ## Version History
 
+- **v2.3** - Added two major conceptual guides: Authorization and Roles (minimal role design, Identity vs User separation, authorization layers, resource access patterns) and View Patterns (helpers vs ERB logic, partial organization, display variants, Turbo/Hotwire integration, caching strategies)
 - **v2.2** - Removed all non-SQLite database references (PostgreSQL, MySQL) to focus exclusively on SQLite as the Rails 8+ standard; added advanced testing patterns from Fizzy (multi-tenancy test setup, custom fixture UUID generation, VCR, test helpers, Turbo Stream testing, parallel execution, minimal system tests)
 - **v2.1** - Added Rails 8.1 Modern Stack (Puma plugins, bin/ci, zero-Redis architecture, SQLite optimizations)
 - **v2.0** - Added production patterns: Passkey authentication, UUIDv7 with SQLite, Testing pyramid
