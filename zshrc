@@ -39,6 +39,7 @@ export GPG_TTY=`tty`
 
 # Aliases
 alias gs='git status -s'
+alias gsc='git switch -c' # new way to git checkout -b
 alias ga='git add'
 alias gc='git commit'
 alias gd='git diff'
