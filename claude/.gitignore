@@ -6,6 +6,7 @@ projects/
 session-env/
 shell-snapshots/
 statsig/
+telemetry/
 todos/
 history.jsonl
 settings.json
@@ -13,3 +14,4 @@ stats-cache.json
 .claude.json
 .credentials.json
 tailwind_all_components.json
+tailwind_all_components.old.json

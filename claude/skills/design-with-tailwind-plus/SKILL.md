@@ -543,61 +543,136 @@ The `tailwind_all_components.json` file contains 657 components organized in a t
 Each component in the JSON file has this structure:
 ```json
 {
-  "id": "section_category_subcategory_number",
-  "section": "application-ui",
-  "category": "forms",
-  "subcategory": "input-groups",
-  "url": "https://tailwindcss.com/plus/...",
-  "code": "<!-- Full HTML code -->",
+  "id": "category-subcategory-component-name",
   "name": "Component name",
-  "scraped_at": "2025-09-17T13:34:14-04:00"
+  "category": "Marketing",
+  "subcategory": "Hero sections",
+  "subtype": "sections",
+  "url": "https://tailwindcss.com/plus/ui-blocks/marketing/sections/heroes#component-abc",
+  "tailwindcss_version": "v4.1",
+  "code": {
+    "light": "<!-- HTML for light theme -->",
+    "dark": "<!-- HTML for dark theme -->",
+    "system": "<!-- HTML for system theme -->"
+  },
+  "description": "A centered hero section with large heading, supporting text, and call-to-action buttons. On desktop, buttons are arranged horizontally; on mobile, they stack vertically for better touch interaction. Features a clean, minimalist design that maintains visual hierarchy across all screen sizes. Suitable for landing pages and pairs well with feature sections below."
 }
 ```
+
+**New in this version:**
+- **Multiple theme variants**: `code.light`, `code.dark`, `code.system` for different color schemes
+- **AI-generated descriptions**: Detailed analysis of component design, responsive behavior, use cases, and integration recommendations
+- **Version tracking**: Tailwind CSS version used in the component
 
 ## How to Find and Use Components
 
 ### Search Strategy
-When looking for a component, use the taxonomy above to narrow your search:
 
-1. **Identify the section**: Is this for an application, e-commerce site, or marketing page?
-2. **Find the category**: What type of component? (forms, navigation, layout, etc.)
-3. **Look for subcategory**: Specific component variant
+The component library now includes AI-generated descriptions of each component's design, responsive behavior, and use cases. This enables powerful semantic search capabilities.
+
+**Search Methods (in order of preference):**
+
+1. **Semantic Search via Descriptions** (NEW - Most Powerful)
+   ```bash
+   # Search by use case or behavior
+   jq '.components[] | select(.description | test("landing page"; "i"))' tailwind_all_components.json
+
+   # Find components with specific responsive behavior
+   jq '.components[] | select(.description | test("stack.*mobile"; "i"))' tailwind_all_components.json
+
+   # Search for design patterns
+   jq '.components[] | select(.description | test("sidebar.*navigation"; "i"))' tailwind_all_components.json
+
+   # Find components for specific scenarios
+   jq '.components[] | select(.description | test("checkout|cart|payment"; "i"))' tailwind_all_components.json
+   ```
+
+2. **Taxonomy Search** (Fast, Precise)
+   ```bash
+   # Find by category and subcategory
+   jq '.components[] | select(.category == "Marketing" and .subcategory == "Hero sections")' tailwind_all_components.json
+
+   # Find all in a category
+   jq '.components[] | select(.category == "Application ui")' tailwind_all_components.json
+
+   # Find by subcategory across all categories
+   jq '.components[] | select(.subcategory == "Buttons")' tailwind_all_components.json
+   ```
+
+3. **Name Search** (Direct Matching)
+   ```bash
+   # Case-insensitive name search
+   jq '.components[] | select(.name | test("centered"; "i"))' tailwind_all_components.json
+   ```
+
+4. **Code Search** (For Specific Patterns)
+   ```bash
+   # Find components using specific HTML elements or classes
+   jq '.components[] | select(.code.system | test("grid-cols-3"))' tailwind_all_components.json
+   ```
 
 **Search Examples**:
-- Need a button? > `application-ui` > `elements` > `buttons`
-- Need a checkout form? > `ecommerce` > `components` > `checkout-forms`
-- Need a hero section? > `marketing` > `sections` > `heroes`
-- Need pagination? > `application-ui` > `navigation` > `pagination`
+- Need a button? Search `description` for "button" or use taxonomy: `category == "Application ui"` and `subcategory == "Buttons"`
+- Need a checkout form? Search description for "checkout" or use: `category == "Ecommerce"` and `subcategory == "Checkout forms"`
+- Need something that stacks on mobile? Search description for "stack.*mobile"
+- Need a hero section? Search: `category == "Marketing"` and `subcategory == "Hero sections"`
+
+### Advanced Search: Combining Criteria
+
+```bash
+# Find Marketing components that mention "testimonials" in description
+jq '.components[] | select(.category == "Marketing" and (.description | test("testimonial"; "i")))' tailwind_all_components.json
+
+# Find components with horizontal->vertical responsive behavior
+jq '.components[] | select(.description | test("horizontal.*vertical|stack.*mobile"; "i"))' tailwind_all_components.json
+
+# Find form components suitable for sign-in
+jq '.components[] | select(.category == "Application ui" and (.description | test("sign.?in|login|auth"; "i")))' tailwind_all_components.json
+```
 
 ### Using Components
 
-**Search Methods**:
-- **Grep tool**: Search for keywords in component code or metadata
-- **jq via Bash**: Parse JSON structure for precise filtering
-  ```bash
-  # Find all buttons
-  jq '.components[] | select(.subcategory == "buttons")' tailwind_all_components.json
-
-  # Find components in a specific section
-  jq '.components[] | select(.section == "marketing")' tailwind_all_components.json
-
-  # Find components by name
-  jq '.components[] | select(.name | contains("sidebar"))' tailwind_all_components.json
-  ```
-
 **Component Usage Steps**:
-1. **Search** the components file using Grep or jq
-2. **Copy** the component code as a starting point
-3. **Customize** colors, spacing, content to fit your design
-4. **Test** responsiveness and accessibility
-5. **Strip** unnecessary classes for simpler use cases
-6. **Add** `@tailwindplus/elements` script if component uses interactive elements
+1. **Search** using semantic description search (preferred) or taxonomy
+2. **Review** the AI description to understand responsive behavior and use cases
+3. **Choose theme**: Select `code.light`, `code.dark`, or `code.system` based on your needs
+4. **Copy** the component code as a starting point
+5. **Customize** colors, spacing, content to fit your design
+6. **Test** responsiveness (descriptions tell you what to expect)
+7. **Strip** unnecessary classes for simpler use cases
+8. **Add** `@tailwindplus/elements` script if component uses interactive elements
 
-### Dark Mode
-Many components include dark mode variants:
-- Use `dark:` prefix for dark mode styles
-- Common pattern: `class="bg-white dark:bg-gray-900"`
-- Test both light and dark modes
+### Theme Selection
+
+**CRITICAL: ALWAYS use `code.system` by default unless you have a very specific reason not to.**
+
+Each component includes 3 theme variants:
+- **`code.system`**: ✅ **USE THIS** - Adapts to user's OS dark/light preference automatically
+- **`code.light`**: ⚠️ **RARELY USE** - Only for forced light-only applications
+- **`code.dark`**: ⚠️ **RARELY USE** - Only for forced dark-only applications
+
+The `system` theme respects the user's operating system preference and is the modern standard for web applications. Light and dark variants should only be used in very specific cases where the application enforces a single color scheme regardless of user preference.
+
+### Leveraging AI Descriptions
+
+The AI-generated descriptions provide valuable context:
+- **Design overview**: What the component looks like and contains
+- **Responsive behavior**: How it adapts from desktop to mobile
+- **Use cases**: Where and when to use the component
+- **Integration**: What other components it pairs well with
+
+**Example Description Analysis**:
+```
+"A centered hero section with large heading, supporting text, and call-to-action
+buttons. On desktop, buttons are arranged horizontally; on mobile, they stack
+vertically for better touch interaction."
+```
+
+From this you learn:
+- Layout: Centered design
+- Elements: Heading, text, CTA buttons
+- Responsive: Buttons horizontal→vertical
+- Mobile optimization: Stack for touch targets
 
 ## Workflow
 

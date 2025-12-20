@@ -656,6 +656,25 @@ Production-proven testing strategy (760+ tests):
 - User asks about test organization
 - User needs testing best practices
 
+### Lexxy Rich Text Editor
+**File:** `docs/lexxy-rich-text-editor.md`
+
+Production-ready pattern for using Lexxy instead of Trix with ActionText:
+- Drop-in Trix replacement with modern editing experience
+- Prompt system for @mentions, #tags, and autocomplete
+- Editor events (lexxy:change, focus, blur) for Stimulus integration
+- Syntax highlighting for code blocks
+- HTML sanitization configuration
+- System testing helpers
+
+**When to reference:**
+- User asks about rich text editing in Rails
+- User wants to replace Trix with something better
+- User needs autocomplete/mentions in rich text
+- User asks about ActionText customization
+- User wants syntax highlighting in user content
+- User asks "how do I add @mentions to comments?"
+
 ### Rails 8.1 Modern Stack
 **File:** `docs/rails-8-modern-stack.md`
 
@@ -708,6 +727,7 @@ Be specific, cite patterns from production Rails apps, and always explain *why* 
 
 ## Version History
 
+- **v2.4** - Added Lexxy Rich Text Editor guide (Trix replacement, prompt system for @mentions, editor events, syntax highlighting)
 - **v2.3** - Added two major conceptual guides: Authorization and Roles (minimal role design, Identity vs User separation, authorization layers, resource access patterns) and View Patterns (helpers vs ERB logic, partial organization, display variants, Turbo/Hotwire integration, caching strategies)
 - **v2.2** - Removed all non-SQLite database references (PostgreSQL, MySQL) to focus exclusively on SQLite as the Rails 8+ standard; added advanced testing patterns from Fizzy (multi-tenancy test setup, custom fixture UUID generation, VCR, test helpers, Turbo Stream testing, parallel execution, minimal system tests)
 - **v2.1** - Added Rails 8.1 Modern Stack (Puma plugins, bin/ci, zero-Redis architecture, SQLite optimizations)
