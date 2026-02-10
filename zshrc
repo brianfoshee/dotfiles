@@ -35,6 +35,11 @@ if command -v rbenv &>/dev/null; then
   eval "$(rbenv init - zsh)"
 fi
 
+# setup mise for runtime version management
+if command -v mise &>/dev/null; then
+  eval "$(mise activate zsh)"
+fi
+
 # for setting up git / pgp
 # https://gist.github.com/troyfontaine/18c9146295168ee9ca2b30c00bd1b41e
 export GPG_TTY=`tty`
