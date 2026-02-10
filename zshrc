@@ -99,7 +99,7 @@ if type brew &>/dev/null; then
 fi
 
 # add uv binaries to path
-export PATH="/Users/brian/.local/bin:$PATH"
+export PATH="$HOME/.local/bin:$PATH"
 
 # autoload -U +X bashcompinit && bashcompinit
 
