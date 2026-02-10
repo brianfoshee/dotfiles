@@ -109,5 +109,5 @@ if [[ "$(uname -s)" == "Darwin" ]]; then
 fi
 
 # Added by LM Studio CLI (lms)
-export PATH="$PATH:/Users/brian/.lmstudio/bin"
+export PATH="$PATH:$HOME/.lmstudio/bin"
 # End of LM Studio CLI section
