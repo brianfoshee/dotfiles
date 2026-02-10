@@ -661,10 +661,15 @@ Production-proven testing strategy (760+ tests):
 
 Production-ready pattern for using Lexxy instead of Trix with ActionText:
 - Drop-in Trix replacement with modern editing experience
-- Prompt system for @mentions, #tags, and autocomplete
+- Prompt system for @mentions, #tags, slash commands (`/music`, `/video`, etc.)
+- Multi-character triggers (not limited to single characters)
+- Multiple prompts with different content types in same editor
+- SGID-based custom attachables (making any model embeddable)
 - Editor events (lexxy:change, focus, blur) for Stimulus integration
 - Syntax highlighting for code blocks
-- HTML sanitization configuration
+- Link unfurling with `lexxy:insert-link` event
+- HTML sanitization and canonical format reference
+- Rails main editor registry (future pluggable editor system)
 - System testing helpers
 
 **When to reference:**
@@ -674,6 +679,9 @@ Production-ready pattern for using Lexxy instead of Trix with ActionText:
 - User asks about ActionText customization
 - User wants syntax highlighting in user content
 - User asks "how do I add @mentions to comments?"
+- User wants slash commands like `/music` or `/video`
+- User asks about embedding custom models in rich text
+- User asks about SGID or attachable_sgid
 
 ### Rails 8.1 Modern Stack
 **File:** `docs/rails-8-modern-stack.md`
@@ -694,6 +702,31 @@ Zero-build, zero-Redis architecture for Rails 8.1:
 - User asks about Puma plugins or Foreman alternatives
 - User needs background jobs without Redis/Sidekiq
 - User asks about modern Rails stack or zero-build approach
+
+### Production Infrastructure
+**File:** `docs/production-infrastructure.md`
+
+Complete production deployment guide for Rails 8.1 applications:
+- Kamal deployment configuration (containers, accessories, volumes, secrets)
+- Litestream SQLite replication to cloud storage with retention strategies
+- Cloud-init VM provisioning (Docker, tunnel daemons, VPN, firewall)
+- Zero Trust networking (tunnels for HTTP, VPN for SSH, no public IP)
+- CI/CD pipeline with GitHub Actions (security scans, tests, VPN-based deployment)
+- ActiveStorage with cloud storage backends
+- Multi-stage Dockerfile with jemalloc and Thruster
+- Cost optimization (SQLite vs managed databases)
+
+**When to reference:**
+- User asks about deploying Rails to production
+- User wants to set up Kamal deployment
+- User asks about SQLite backups or Litestream
+- User needs CI/CD pipeline for Rails
+- User asks about secure deployment without public IPs
+- User wants Zero Trust or tunnel-based architecture
+- User asks about cloud-init or VM provisioning
+- User needs ActiveStorage with cloud providers
+- User asks "how do I deploy this Rails app?"
+- User wants to understand production infrastructure patterns
 
 ## How to Use Reference Documentation
 
@@ -727,6 +760,10 @@ Be specific, cite patterns from production Rails apps, and always explain *why* 
 
 ## Version History
 
+- **v2.8** - Added custom upload handling to Lexxy guide: intercepting file uploads to create custom models (e.g., Image) instead of raw Active Storage blobs, custom upload endpoint pattern, `lexxy:file-accept` event for validation/filtering
+- **v2.7** - Major update to Lexxy Rich Text Editor guide: corrected prompt system documentation (triggers support any string like `/music`, `/video`, not just single characters), fixed `<lexxy-prompt-item>` attributes (`sgid` + `<template type="menu/editor">` pattern instead of `value`/`label`), added SGID system explanation, custom attachables model pattern, Rails main editor registry (future), canonical HTML format reference, music/video slash command examples
+- **v2.6** - Added Production Infrastructure guide (Kamal deployment, Litestream SQLite replication, cloud-init VM provisioning, Zero Trust networking, CI/CD pipelines, ActiveStorage with cloud storage, multi-stage Dockerfiles, cost optimization)
+- **v2.5** - Enhanced passkey-authentication.md with comprehensive testing guide (virtual authenticator setup, hostname configuration for WebAuthn in tests with Capybara.server_host, TestOriginChecker pattern for random ports, complete troubleshooting guide, modern 2025 WebAuthn patterns with native JSON APIs, PublicKeyCredentialHints, and conditional UI autofill)
 - **v2.4** - Added Lexxy Rich Text Editor guide (Trix replacement, prompt system for @mentions, editor events, syntax highlighting)
 - **v2.3** - Added two major conceptual guides: Authorization and Roles (minimal role design, Identity vs User separation, authorization layers, resource access patterns) and View Patterns (helpers vs ERB logic, partial organization, display variants, Turbo/Hotwire integration, caching strategies)
 - **v2.2** - Removed all non-SQLite database references (PostgreSQL, MySQL) to focus exclusively on SQLite as the Rails 8+ standard; added advanced testing patterns from Fizzy (multi-tenancy test setup, custom fixture UUID generation, VCR, test helpers, Turbo Stream testing, parallel execution, minimal system tests)

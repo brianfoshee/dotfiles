@@ -4,14 +4,16 @@ Production-proven pattern for using Lexxy instead of Trix as the rich text edito
 
 ## Overview
 
-**Lexxy** is a Basecamp-built rich text editor that wraps Facebook's Lexical framework. It provides a modern editing experience while integrating seamlessly with Rails ActionText.
+**Lexxy** is a Basecamp-built rich text editor that wraps Meta's Lexical framework. It provides a modern editing experience while integrating seamlessly with Rails ActionText.
 
 **Why Lexxy over Trix:**
 - Better mobile editing experience
-- Built-in autocomplete prompt system for mentions, tags, links
+- Built-in autocomplete prompt system for mentions, tags, slash commands
 - Code block syntax highlighting
-- More extensible architecture
+- More extensible architecture (Lexical extensions)
 - Modern JavaScript (web components)
+- Proper HTML semantics (real `<p>` tags, not `<div>`)
+- Markdown support with auto-formatting
 
 ## Setup
 
@@ -19,24 +21,51 @@ Production-proven pattern for using Lexxy instead of Trix as the rich text edito
 
 ```ruby
 # Gemfile
-gem "lexxy", github: "basecamp/lexxy"
+gem "lexxy", "~> 0.1.26.beta"
 ```
 
 ### JavaScript Import
 
+**Import Maps (with Propshaft):**
+
 ```ruby
 # config/importmap.rb
-pin "lexxy"
-pin "@rails/actiontext", to: "actiontext.esm.js"
+pin "lexxy", to: "lexxy.js"
+pin "@rails/activestorage", to: "activestorage.esm.js"  # for attachments
 ```
 
 ```javascript
 // app/javascript/application.js
 import "lexxy"
-import "@rails/actiontext"
 ```
 
-Import both Lexxy and ActionText JS. Lexxy provides the editor, ActionText JS handles attachment uploads and blob signing.
+**Bundlers (esbuild/webpack):**
+
+```bash
+yarn add @37signals/lexxy
+yarn add @rails/activestorage
+```
+
+```javascript
+import "@37signals/lexxy"
+```
+
+### CSS
+
+```erb
+<%= stylesheet_link_tag "lexxy" %>
+```
+
+### Configuration
+
+By default, Lexxy overrides ActionText helpers. To opt out:
+
+```ruby
+# config/application.rb
+config.lexxy.override_action_text_defaults = false
+```
+
+Then use explicitly: `form.lexxy_rich_text_area :content`
 
 ## Model Usage
 
@@ -49,10 +78,6 @@ end
 
 class Comment < ApplicationRecord
   has_rich_text :body
-end
-
-class Board < ApplicationRecord
-  has_rich_text :public_description
 end
 ```
 
@@ -74,16 +99,210 @@ Pass prompts as a block to enable autocomplete features:
 
 ```erb
 <%= form.rich_textarea :description,
-      placeholder: "Add notes, @mention people, or #reference cards..." do %>
+      placeholder: "Add notes, @mention people, or /music to add a song..." do %>
   <%= mentions_prompt(@card.board) %>
-  <%= cards_prompt %>
+  <%= music_prompt %>
+  <%= video_prompt %>
   <%= code_language_picker %>
 <% end %>
 ```
 
+---
+
+## The SGID System
+
+**SGID (Signed Global ID)** is the core mechanism linking attachments to records in ActionText.
+
+### How It Works
+
+```ruby
+# Any model can generate an SGID
+person.attachable_sgid  # => "BAh7CEkiCGdpZAY6BkVU..."
+
+# ActionText resolves SGIDs back to records
+ActionText::Attachable.from_node(node)  # Uses node["sgid"] to find record
+```
+
+The SGID is:
+- A cryptographically signed identifier
+- Unique to your application
+- Cannot be forged
+- Has a purpose string ("attachable") preventing reuse for other purposes
+
+### Making Models Attachable
+
+Include `ActionText::Attachable` in any model you want to embed in rich text:
+
+```ruby
+class Person < ApplicationRecord
+  include ActionText::Attachable
+
+  # Required: determines how ActionText categorizes this attachment
+  def content_type
+    "application/vnd.actiontext.mention"
+  end
+
+  # Optional: custom partial for rendered output
+  def to_attachable_partial_path
+    "people/mention"
+  end
+
+  # Optional: plain text for search/excerpts
+  def attachable_plain_text_representation(caption = nil)
+    "@#{name}"
+  end
+
+  # Optional: fallback when record is deleted
+  def self.to_missing_attachable_partial_path
+    "people/deleted_mention"
+  end
+end
+```
+
+---
+
 ## Prompt System
 
-Lexxy's prompt system enables autocomplete triggered by specific characters. Each `<lexxy-prompt>` element defines a trigger and data source.
+Lexxy's prompt system enables autocomplete triggered by specific strings. Each `<lexxy-prompt>` element defines a trigger and data source.
+
+### Trigger Capabilities
+
+**Triggers are NOT limited to single characters.** They can be any string:
+
+| Trigger | Use Case |
+|---------|----------|
+| `@` | Mentions |
+| `#` | Tags or card references |
+| `/music` | Insert a song |
+| `/video` | Insert a video |
+| `/gif` | Insert a GIF |
+| `by:` | Filter by assignee |
+
+### Multiple Prompts with Different Content Types
+
+Each `<lexxy-prompt>` is independent. You can have multiple prompts with different triggers and content types:
+
+```erb
+<%= form.rich_textarea :body do %>
+  <%# Single-character trigger %>
+  <lexxy-prompt trigger="@" name="mention">
+    <%= render partial: "people/prompt_item", collection: Person.all %>
+  </lexxy-prompt>
+
+  <%# Multi-character slash commands %>
+  <lexxy-prompt trigger="/music" name="music">
+    <%= render partial: "songs/prompt_item", collection: Song.limit(50) %>
+  </lexxy-prompt>
+
+  <lexxy-prompt trigger="/video" name="video" src="<%= videos_path %>" remote-filtering>
+  </lexxy-prompt>
+
+  <lexxy-prompt trigger="/gif" name="gif" src="<%= gifs_path %>" remote-filtering supports-space-in-searches>
+  </lexxy-prompt>
+<% end %>
+```
+
+Each prompt generates its own content type: `application/vnd.actiontext.{name}`
+
+### Prompt Attributes
+
+#### `<lexxy-prompt>` Element
+
+| Attribute | Description |
+|-----------|-------------|
+| `trigger` | String that activates the prompt (e.g., `@`, `/music`, `by:`) |
+| `name` | Identifier determining content type (`application/vnd.actiontext.{name}`) |
+| `src` | URL to load items remotely |
+| `empty-results` | Message when no matches found (default: "Nothing found") |
+| `remote-filtering` | Enable server-side filtering |
+| `insert-editable-text` | Insert as editable text instead of attachment |
+| `supports-space-in-searches` | Allow spaces in search queries |
+
+#### `<lexxy-prompt-item>` Element
+
+| Attribute | Description |
+|-----------|-------------|
+| `search` | Text to match when filtering |
+| `sgid` | Signed GlobalID for the attachable (from `attachable_sgid`) |
+
+#### `<template>` Elements
+
+Each prompt item contains two templates:
+
+| Type | Description |
+|------|-------------|
+| `type="menu"` | How item appears in dropdown |
+| `type="editor"` | How item appears in editor after selection |
+
+### Prompt Item Structure
+
+```erb
+<%# app/views/people/_prompt_item.html.erb %>
+<lexxy-prompt-item
+  search="<%= "#{person.name} #{person.email}" %>"
+  sgid="<%= person.attachable_sgid %>">
+
+  <template type="menu">
+    <%= image_tag person.avatar, class: "avatar" %>
+    <span><%= person.name %></span>
+  </template>
+
+  <template type="editor">
+    <%= render "people/mention", person: person %>
+  </template>
+</lexxy-prompt-item>
+```
+
+**Key point:** Use the same partial for `type="editor"` as you use for rendered output. This ensures consistency between how mentions look in the editor and in the final rendered content.
+
+### Loading Strategies
+
+#### 1. Inline (Small Datasets)
+
+All items rendered in HTML:
+
+```erb
+<lexxy-prompt trigger="@" name="mention">
+  <%= render partial: "people/prompt_item", collection: Person.all %>
+</lexxy-prompt>
+```
+
+#### 2. Remote (Medium Datasets)
+
+Items loaded once from server, filtered client-side:
+
+```erb
+<lexxy-prompt trigger="@" name="mention" src="<%= mentions_path %>">
+</lexxy-prompt>
+```
+
+```ruby
+# app/controllers/mentions_controller.rb
+class MentionsController < ApplicationController
+  def index
+    @people = Person.all
+    render layout: false
+  end
+end
+```
+
+#### 3. Remote Filtering (Large Datasets)
+
+Server filters on each keystroke:
+
+```erb
+<lexxy-prompt trigger="@" name="mention" src="<%= mentions_path %>" remote-filtering supports-space-in-searches>
+</lexxy-prompt>
+```
+
+```ruby
+class MentionsController < ApplicationController
+  def index
+    @people = Person.search(params[:query]).limit(10)
+    render layout: false
+  end
+end
+```
 
 ### Helper Implementation
 
@@ -97,11 +316,21 @@ module RichTextHelper
       name: "mention"
   end
 
-  def tags_prompt
+  def music_prompt
     content_tag "lexxy-prompt", "",
-      trigger: "#",
-      src: prompts_tags_path,
-      name: "tag"
+      trigger: "/music",
+      src: prompts_songs_path,
+      name: "music",
+      "remote-filtering": true,
+      "supports-space-in-searches": true
+  end
+
+  def video_prompt
+    content_tag "lexxy-prompt", "",
+      trigger: "/video",
+      src: prompts_videos_path,
+      name: "video",
+      "remote-filtering": true
   end
 
   def cards_prompt
@@ -110,72 +339,95 @@ module RichTextHelper
       src: prompts_cards_path,
       name: "card",
       "insert-editable-text": true,
-      "remote-filtering": true,
-      "supports-space-in-searches": true
+      "remote-filtering": true
   end
 
   def code_language_picker
     content_tag "lexxy-code-language-picker"
   end
-
-  def general_prompts(board)
-    safe_join([mentions_prompt(board), cards_prompt, code_language_picker])
-  end
 end
 ```
 
-### Prompt Attributes
+---
 
-| Attribute | Description |
-|-----------|-------------|
-| `trigger` | Character that activates the prompt (e.g., `@`, `#`) |
-| `src` | URL endpoint returning prompt items |
-| `name` | Identifier for the prompt type |
-| `insert-editable-text` | Insert as editable text vs attachment |
-| `remote-filtering` | Server-side filtering vs client-side |
-| `supports-space-in-searches` | Allow spaces in search queries |
+## Example: Music and Video Slash Commands
 
-### Prompt Endpoint Response
-
-Return HTML with `<lexxy-prompt-item>` elements:
-
-```erb
-<%# app/views/prompts/boards/users/_user.html.erb %>
-<lexxy-prompt-item
-  value="<%= sgid_for(user) %>"
-  label="<%= user.name %>"
-  search="<%= user.name %> <%= user.email %>">
-  <div class="prompt-item">
-    <%= avatar_tag(user, size: :small) %>
-    <span><%= user.name %></span>
-  </div>
-</lexxy-prompt-item>
-```
-
-```erb
-<%# app/views/prompts/cards/_card.html.erb %>
-<lexxy-prompt-item
-  value="#<%= card.number %>"
-  label="#<%= card.number %> <%= card.title %>"
-  search="<%= card.number %> <%= card.title %>">
-  <div class="prompt-item">
-    <span class="card-number">#<%= card.number %></span>
-    <span class="card-title"><%= truncate(card.title, length: 40) %></span>
-  </div>
-</lexxy-prompt-item>
-```
-
-### Prompt Controller
+### Model Setup
 
 ```ruby
-# app/controllers/prompts/boards/users_controller.rb
-class Prompts::Boards::UsersController < ApplicationController
-  def index
-    @users = @board.accessible_users.search(params[:query]).limit(10)
-    render layout: false
+# app/models/song.rb
+class Song < ApplicationRecord
+  include ActionText::Attachable
+
+  def content_type
+    "application/vnd.actiontext.music"
+  end
+
+  def to_attachable_partial_path
+    "songs/embed"
+  end
+
+  def attachable_plain_text_representation(caption = nil)
+    "[#{title} by #{artist}]"
+  end
+end
+
+# app/models/video.rb
+class Video < ApplicationRecord
+  include ActionText::Attachable
+
+  def content_type
+    "application/vnd.actiontext.video"
+  end
+
+  def to_attachable_partial_path
+    "videos/embed"
   end
 end
 ```
+
+### Prompt Items
+
+```erb
+<%# app/views/songs/_prompt_item.html.erb %>
+<lexxy-prompt-item
+  search="<%= "#{song.title} #{song.artist} #{song.album}" %>"
+  sgid="<%= song.attachable_sgid %>">
+
+  <template type="menu">
+    <%= image_tag song.album_art, class: "album-art" %>
+    <div>
+      <strong><%= song.title %></strong>
+      <span><%= song.artist %></span>
+    </div>
+  </template>
+
+  <template type="editor">
+    <%= render "songs/embed", song: song %>
+  </template>
+</lexxy-prompt-item>
+```
+
+### Embed Partials
+
+```erb
+<%# app/views/songs/_embed.html.erb %>
+<div class="song-embed">
+  <%= image_tag song.album_art, class: "song-embed__art" %>
+  <div class="song-embed__info">
+    <strong><%= song.title %></strong>
+    <span><%= song.artist %></span>
+  </div>
+</div>
+
+<%# app/views/videos/_embed.html.erb %>
+<div class="video-embed">
+  <%= image_tag video.thumbnail_url, class: "video-embed__thumb" %>
+  <span class="video-embed__title"><%= video.title %></span>
+</div>
+```
+
+---
 
 ## Editor Events and Stimulus Integration
 
@@ -204,11 +456,12 @@ Lexxy dispatches custom DOM events that bubble up through the DOM. Stimulus cont
 
 | Event | Description |
 |-------|-------------|
+| `lexxy:initialize` | Editor attached to DOM and ready |
 | `lexxy:change` | Content changed |
 | `lexxy:focus` | Editor gained focus |
 | `lexxy:blur` | Editor lost focus |
-| `lexxy:ready` | Editor initialized |
-| `lexxy:insert-link` | Link inserted |
+| `lexxy:file-accept` | File dropped/inserted (call `preventDefault()` to cancel) |
+| `lexxy:insert-link` | Plain text link pasted |
 
 ### Production Examples
 
@@ -236,12 +489,6 @@ Lexxy dispatches custom DOM events that bubble up through the DOM. Stimulus cont
                    keydown.esc->form#cancel:stop"
         } %>
 <% end %>
-```
-
-**Validation on change:**
-```erb
-<%= form.rich_textarea :body,
-      data: { action: "lexxy:change->form#disableSubmitWhenInvalid" } %>
 ```
 
 ### Auto-Save Controller
@@ -351,17 +598,6 @@ export default class extends Controller {
 }
 ```
 
-### Accessing Event Details
-
-Lexxy events include details in `event.detail`:
-
-```javascript
-handleChange(event) {
-  const { previousContent, newContent } = event.detail
-  // ...
-}
-```
-
 ### Link Unfurling with `lexxy:insert-link`
 
 Fired when a plain text link is pasted into the editor. Use this to convert URLs into rich embeds.
@@ -374,11 +610,9 @@ Fired when a plain text link is pasted into the editor. Use this to convert URLs
 | `replaceLinkWith(html, options)` | Replace the link with custom HTML |
 | `insertBelowLink(html, options)` | Insert HTML below the link |
 
-**Options for callbacks:**
+**Options:**
 - `{ attachment: true }` - render as non-editable content
-- `{ attachment: { sgid: "your-sgid" } }` - provide a custom SGID for ActionText
-
-**Callbacks pattern:** Pass `event.detail` as a callbacks object to keep your async code clean:
+- `{ attachment: { sgid: "your-sgid" } }` - provide a custom SGID
 
 ```javascript
 // app/javascript/controllers/link_unfurl_controller.js
@@ -409,13 +643,12 @@ export default class extends Controller {
         body: JSON.stringify({ url })
       })
 
-      if (!response.ok) return // Fall back to plain link
+      if (!response.ok) return
 
       const { html, sgid } = await response.json()
       callbacks.replaceLinkWith(html, { attachment: { sgid } })
     } catch (error) {
       console.error("Unfurl failed:", error)
-      // Fall back to default link behavior
     }
   }
 
@@ -425,8 +658,6 @@ export default class extends Controller {
 }
 ```
 
-**Wiring the controller:**
-
 ```erb
 <%= form_with model: @post, data: { controller: "link-unfurl" } do |form| %>
   <%= form.rich_text_area :body,
@@ -434,15 +665,7 @@ export default class extends Controller {
 <% end %>
 ```
 
-Or with controller on the editor element directly:
-
-```erb
-<%= form.rich_text_area :body,
-      data: {
-        controller: "link-unfurl",
-        action: "lexxy:insert-link->link-unfurl#handleLink"
-      } %>
-```
+---
 
 ## Syntax Highlighting
 
@@ -451,11 +674,12 @@ Lexxy includes syntax highlighting for code blocks. Apply it to rendered content
 ```javascript
 // app/javascript/controllers/syntax_highlight_controller.js
 import { Controller } from "@hotwired/stimulus"
-import { highlightAll } from "lexxy"
+import { highlightCode } from "lexxy"
+// Or: import { highlightCode } from "@37signals/lexxy/helpers"
 
 export default class extends Controller {
   connect() {
-    highlightAll(this.element)
+    highlightCode()
   }
 }
 ```
@@ -466,33 +690,313 @@ export default class extends Controller {
 </div>
 ```
 
-## Hotkey Handling
+---
 
-When implementing global hotkeys, check if the user is typing in a Lexxy editor:
+## JavaScript Configuration
 
 ```javascript
-// app/javascript/controllers/hotkey_controller.js
+import * as Lexxy from "lexxy"
+
+Lexxy.configure({
+  global: {
+    // Must match ActionText's tag name
+    attachmentTagName: "action-text-attachment",
+
+    // Namespace for content types (application/vnd.{namespace}.{name})
+    attachmentContentTypeNamespace: "actiontext",
+
+    // For authenticated Active Storage controllers
+    authenticatedUploads: false,
+
+    // Custom extensions
+    extensions: []
+  },
+
+  // Default preset for all editors
+  default: {
+    toolbar: true,
+    attachments: true,
+    markdown: true,
+    multiLine: true,
+    richText: true
+  },
+
+  // Custom presets
+  simple: {
+    toolbar: false,
+    richText: false
+  },
+
+  comment: {
+    toolbar: true,
+    attachments: false,
+    multiLine: true
+  }
+})
+```
+
+Use presets:
+
+```html
+<lexxy-editor preset="simple"></lexxy-editor>
+```
+
+---
+
+## Custom Upload Handling (Image Models)
+
+By default, file uploads create Active Storage blobs. You can intercept uploads to create custom models (e.g., an `Image` model) instead.
+
+### The Problem
+
+When a user uploads an image to a Lexxy editor:
+1. File uploads via Active Storage Direct Upload
+2. Creates an `ActiveStorage::Blob`
+3. Attachment references the blob's SGID
+
+But you might want uploads to create your own `Image` model for:
+- Custom metadata (dimensions, EXIF, alt text)
+- Access control
+- Processing pipelines
+- Analytics/tracking
+
+### Solution: Custom Upload Endpoint
+
+Override `data-direct-upload-url` to point to your own endpoint:
+
+```erb
+<%= form.rich_textarea :body,
+      data: {
+        direct_upload_url: images_upload_path,
+        blob_url_template: rails_blob_url(":signed_id", ":filename")
+      } %>
+```
+
+### Image Model
+
+```ruby
+# app/models/image.rb
+class Image < ApplicationRecord
+  include ActionText::Attachable
+
+  belongs_to :creator, class_name: "User", default: -> { Current.user }
+  belongs_to :account, default: -> { Current.account }
+
+  has_one_attached :file
+
+  def content_type
+    "application/vnd.actiontext.image"
+  end
+
+  def previewable_attachable?
+    true
+  end
+
+  def to_attachable_partial_path
+    "images/embed"
+  end
+
+  def attachable_plain_text_representation(caption = nil)
+    "[Image: #{caption || file.filename}]"
+  end
+end
+```
+
+### Upload Controller
+
+Your endpoint receives the file via Active Storage Direct Upload protocol and returns JSON that Lexxy expects:
+
+```ruby
+# app/controllers/images_controller.rb
+class ImagesController < ApplicationController
+  def upload
+    # Create blob from Direct Upload
+    blob = ActiveStorage::Blob.create_and_upload!(
+      io: request.body,
+      filename: request.headers["X-Upload-Filename"] || "upload",
+      content_type: request.headers["Content-Type"]
+    )
+
+    # Create your Image model
+    image = Image.create!(file: blob)
+
+    # Return response in the shape Lexxy expects
+    render json: {
+      attachable_sgid: image.attachable_sgid,  # Image's SGID, not blob's
+      filename: blob.filename.to_s,
+      content_type: blob.content_type,
+      byte_size: blob.byte_size,
+      previewable: image.previewable_attachable?,
+      url: url_for(image.file.variant(resize_to_limit: [1024, 1024]))
+    }
+  end
+end
+```
+
+### Response Shape
+
+Lexxy's upload handler expects this JSON structure:
+
+```javascript
+{
+  attachable_sgid: "BAh7CEk...",  // Can be ANY model's SGID
+  filename: "photo.jpg",
+  content_type: "image/jpeg",
+  byte_size: 123456,
+  previewable: true,
+  url: "https://..."  // Preview URL for editor display
+}
+```
+
+As long as your endpoint returns this shape, Lexxy doesn't care if it's a blob or your custom model. The `attachable_sgid` determines what gets embedded.
+
+### Embed Partial
+
+```erb
+<%# app/views/images/_embed.html.erb %>
+<figure class="image-embed">
+  <%= image_tag image.file.variant(resize_to_limit: [800, 600]),
+        alt: image.alt_text,
+        loading: "lazy" %>
+  <% if image.caption.present? %>
+    <figcaption><%= image.caption %></figcaption>
+  <% end %>
+</figure>
+```
+
+### Alternative: Intercept with `lexxy:file-accept`
+
+For more control, intercept uploads before they start:
+
+```javascript
+// app/javascript/controllers/image_upload_controller.js
 import { Controller } from "@hotwired/stimulus"
 
 export default class extends Controller {
-  handleHotkey(event) {
-    // Ignore hotkeys when typing in editor
-    if (event.target.closest("lexxy-editor")) {
+  intercept(event) {
+    const file = event.detail.file
+
+    // Only intercept images, let other files use default upload
+    if (!file.type.startsWith("image/")) return
+
+    // Optionally validate
+    if (file.size > 10 * 1024 * 1024) {
+      event.preventDefault()
+      alert("Image must be under 10MB")
       return
     }
 
-    // Handle hotkey...
+    // Let default upload proceed (to your custom endpoint)
+    // Or preventDefault() and handle entirely custom
   }
 }
 ```
+
+```erb
+<%= form_with model: @post, data: { controller: "image-upload" } do |form| %>
+  <%= form.rich_textarea :body,
+        data: {
+          action: "lexxy:file-accept->image-upload#intercept",
+          direct_upload_url: images_upload_path
+        } %>
+<% end %>
+```
+
+### When to Use Each Approach
+
+| Approach | Use When |
+|----------|----------|
+| Custom upload endpoint | You want all uploads to create custom models |
+| `lexxy:file-accept` + custom endpoint | You want to validate/filter before upload |
+| `lexxy:file-accept` + `preventDefault()` | You need completely custom upload handling |
+
+---
+
+## Canonical HTML Format
+
+Lexxy generates the same HTML format ActionText expects:
+
+### File Attachments
+
+```html
+<action-text-attachment
+  sgid="BAh7CEk..."
+  content-type="image/jpeg"
+  url="https://example.com/rails/active_storage/blobs/abc123/photo.jpg"
+  filename="photo.jpg"
+  filesize="123456"
+  width="800"
+  height="600"
+  previewable="true"
+  presentation="gallery">
+</action-text-attachment>
+```
+
+### Custom Attachables (Mentions)
+
+```html
+<action-text-attachment
+  sgid="BAh7CEk..."
+  content-type="application/vnd.actiontext.mention"
+  content="<span class=\"mention\">@Jane Doe</span>">
+</action-text-attachment>
+```
+
+### Allowed Attributes
+
+```ruby
+ActionText::Attachment::ATTRIBUTES = %w(
+  sgid content-type url href filename filesize
+  width height previewable presentation caption content
+)
+```
+
+---
+
+## HTML Sanitization
+
+Extend allowed tags for Lexxy-generated content:
+
+```ruby
+# config/initializers/lexxy.rb
+# Lexxy's engine adds these automatically, but for reference:
+
+Rails.application.config.to_prepare do
+  # Additional tags Lexxy supports
+  ActionText::ContentHelper.allowed_tags += %w[
+    video audio source embed table tbody tr th td
+  ]
+
+  # Additional attributes
+  ActionText::ContentHelper.allowed_attributes += %w[
+    controls poster data-language style
+  ]
+
+  # CSS variables support
+  Loofah::HTML5::SafeList::ALLOWED_CSS_FUNCTIONS << "var"
+end
+```
+
+---
+
+## Content Rendering
+
+Override the ActionText content partial:
+
+```erb
+<%# app/views/layouts/action_text/contents/_content.html.erb %>
+<div class="lexxy-content" data-controller="syntax-highlight">
+  <%= yield -%>
+</div>
+```
+
+---
 
 ## Styling
 
 ### Editor Styles
 
 ```css
-/* app/assets/stylesheets/lexxy.css */
-
 /* Editor container */
 lexxy-editor {
   display: block;
@@ -512,25 +1016,6 @@ lexxy-editor {
   content: attr(placeholder);
   color: var(--placeholder-color);
   pointer-events: none;
-}
-
-/* Toolbar */
-lexxy-toolbar {
-  display: flex;
-  gap: 0.25rem;
-  padding: 0.5rem;
-  border-bottom: 1px solid var(--border-color);
-}
-
-.lexxy-editor__toolbar-button {
-  padding: 0.25rem 0.5rem;
-  border: none;
-  background: transparent;
-  cursor: pointer;
-}
-
-.lexxy-editor__toolbar-button:hover {
-  background: var(--hover-bg);
 }
 
 /* Prompt menu */
@@ -558,65 +1043,30 @@ lexxy-toolbar {
 ### Rendered Content Styles
 
 ```css
-/* app/assets/stylesheets/rich-text-content.css */
-
-.action-text-content {
+.lexxy-content {
   line-height: 1.6;
 }
 
-/* Headings */
-.action-text-content h1 { font-size: 1.5rem; margin: 1.5rem 0 0.75rem; }
-.action-text-content h2 { font-size: 1.25rem; margin: 1.25rem 0 0.5rem; }
-.action-text-content h3 { font-size: 1.1rem; margin: 1rem 0 0.5rem; }
-
 /* Code blocks */
-.action-text-content pre {
+.lexxy-content pre {
   background: var(--code-bg);
   padding: 1rem;
   border-radius: 4px;
   overflow-x: auto;
 }
 
-.action-text-content code {
-  font-family: monospace;
-  font-size: 0.9em;
-}
-
 /* Attachments (mentions, embeds) */
-.action-text-content action-text-attachment {
+.lexxy-content action-text-attachment {
   display: inline;
 }
 
-.action-text-content action-text-attachment[content-type="mention"] {
+.lexxy-content action-text-attachment[content-type*="mention"] {
   color: var(--link-color);
   font-weight: 500;
 }
 ```
 
-## HTML Sanitization
-
-Extend allowed tags for Lexxy-generated content:
-
-```ruby
-# config/initializers/sanitization.rb
-Rails::HTML5::SafeListSanitizer.allowed_tags.merge(
-  %w[s table tr td th thead tbody details summary video source]
-)
-
-Rails::HTML5::SafeListSanitizer.allowed_attributes.merge(
-  %w[data-turbo-frame data-lightbox-target controls type width]
-)
-
-ActionText::ContentHelper.allowed_tags =
-  Rails::HTML5::SafeListSanitizer.allowed_tags.to_a +
-  [ActionText::Attachment.tag_name, "figure", "figcaption"] +
-  ActionText::ContentHelper.allowed_tags.to_a
-
-ActionText::ContentHelper.allowed_attributes =
-  Rails::HTML5::SafeListSanitizer.allowed_attributes.to_a +
-  ActionText::Attachment::ATTRIBUTES +
-  ActionText::ContentHelper.allowed_attributes.to_a
-```
+---
 
 ## System Testing
 
@@ -636,81 +1086,108 @@ end
 ### Test Example
 
 ```ruby
-# test/system/comments_test.rb
 class CommentsTest < ApplicationSystemTestCase
-  test "creating a comment" do
+  test "creating a comment with mention" do
     visit card_path(@card)
 
     fill_in_lexxy with: "This is my comment @david"
     click_button "Post"
 
     assert_text "This is my comment"
-    assert_selector "action-text-attachment[content-type='mention']"
+    assert_selector "action-text-attachment[content-type*='mention']"
   end
 
-  test "uploading an image" do
+  test "using slash command" do
     visit card_path(@card)
 
-    find("lexxy-editor").click
-    attach_file "image.jpg", make_visible: true
+    fill_in_lexxy with: "/music"
+    # Select from prompt menu
+    find(".lexxy-prompt-menu__item", text: "Never Gonna Give You Up").click
 
-    within "form lexxy-editor figure.attachment" do
-      assert_selector "img"
-    end
+    assert_selector "action-text-attachment[content-type*='music']"
   end
 end
 ```
 
-## ActionText Configuration
+---
 
-Customize ActionText behavior for attachments:
+## Hotkey Handling
+
+When implementing global hotkeys, check if the user is typing in a Lexxy editor:
+
+```javascript
+// app/javascript/controllers/hotkey_controller.js
+import { Controller } from "@hotwired/stimulus"
+
+export default class extends Controller {
+  handleHotkey(event) {
+    // Ignore hotkeys when typing in editor
+    if (event.target.closest("lexxy-editor")) {
+      return
+    }
+
+    // Handle hotkey...
+  }
+}
+```
+
+---
+
+## Rails Main: Editor Registry (Future)
+
+Rails main now has a pluggable editor system. This is the future integration path for Lexxy.
+
+### Editor Interface
 
 ```ruby
-# config/initializers/action_text.rb
-Rails.application.config.to_prepare do
-  ActionText::RichText.class_eval do
-    # Custom attachment storage
-    has_many_attached :embeds do |attachable|
-      attachable.variant :thumb, resize_to_limit: [200, 200]
-      attachable.variant :medium, resize_to_limit: [800, 800]
-    end
+class ActionText::Editor::LexxyEditor < ActionText::Editor
+  # Convert editor HTML → canonical ActionText format
+  def as_canonical(editable_fragment)
+    # Lexxy already outputs canonical format, so this is a no-op
+    editable_fragment
+  end
+
+  # Convert canonical format → editor HTML
+  def as_editable(canonical_fragment)
+    # Also a no-op since Lexxy uses the same format
+    canonical_fragment
   end
 end
 ```
 
-## Content Rendering
-
-Override the ActionText content partial:
-
-```erb
-<%# app/views/layouts/action_text/contents/_content.html.erb %>
-<div class="action-text-content" data-controller="syntax-highlight">
-  <%= format_html yield -%>
-</div>
-```
-
-With a formatting helper:
+### Future Configuration (Speculative)
 
 ```ruby
-# app/helpers/html_helper.rb
-module HtmlHelper
-  def format_html(content)
-    auto_link(content, html: { target: "_blank", rel: "noopener" })
-  end
+# config/application.rb
+config.action_text.editors = {
+  lexxy: { some_option: true }
+}
+
+# Per-model selection
+class Article < ApplicationRecord
+  has_rich_text :content, editor: :lexxy
 end
 ```
+
+---
 
 ## Key Architectural Points
 
 1. **Drop-in Trix replacement** - Same ActionText models, same `rich_textarea` helper
 2. **Web component architecture** - `<lexxy-editor>`, `<lexxy-toolbar>`, `<lexxy-prompt>`
-3. **Event-driven integration** - Custom DOM events for Stimulus controllers
-4. **Prompt system for autocomplete** - Flexible trigger-based autocomplete
-5. **Server-rendered prompt items** - Endpoints return HTML, not JSON
-6. **Syntax highlighting built-in** - Import `highlightAll` from lexxy
+3. **SGID-based attachments** - Secure, signed references to any ActiveRecord model
+4. **Multi-character triggers** - Not limited to single characters (`/music`, `/video`, etc.)
+5. **Multiple prompts** - Each prompt is independent with its own content type
+6. **Event-driven integration** - Custom DOM events for Stimulus controllers
+7. **Server-rendered prompt items** - Endpoints return HTML partials, not JSON
+8. **Canonical HTML format** - Lexxy outputs the same format ActionText expects
+
+---
 
 ## References
 
 - [Lexxy GitHub Repository](https://github.com/basecamp/lexxy)
+- [Lexxy Documentation](https://basecamp.github.io/lexxy)
 - [ActionText Guide](https://guides.rubyonrails.org/action_text_overview.html)
+- [ActionText Edge Guide](https://edgeguides.rubyonrails.org/action_text_overview.html)
 - [Lexical (underlying editor)](https://lexical.dev/)

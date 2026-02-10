@@ -1174,9 +1174,706 @@ Rails.application.routes.draw do
 end
 ```
 
+## Testing with Virtual Authenticator (Comprehensive Guide)
+
+### Why Virtual Authenticator
+
+**Without virtual authenticator:**
+- ❌ Can't test WebAuthn flows (browser shows real biometric prompts)
+- ❌ Requires physical hardware (YubiKeys, phones with biometrics)
+- ❌ Can't run in CI/CD pipelines
+- ❌ Can't test error scenarios (user cancellation, timeout, etc.)
+
+**With virtual authenticator:**
+- ✅ Fully automated E2E passkey testing
+- ✅ No physical hardware needed
+- ✅ Works in CI/CD (headless Chrome)
+- ✅ Test all WebAuthn flows programmatically
+- ✅ Fast, reliable, repeatable tests
+
+### Prerequisites
+
+```ruby
+# Gemfile
+gem 'selenium-webdriver', '~> 4.35'  # Virtual authenticator support in 4.x+
+gem 'webauthn', '~> 3.4'
+```
+
+### Critical Configuration for WebAuthn Tests
+
+#### 1. Hostname Setup (CRITICAL - Answers "How do you setup hostname in system tests?")
+
+**The Problem:**
+WebAuthn spec prohibits IP addresses as RP ID. Using `127.0.0.1` causes `SecurityError: This is an invalid domain`.
+
+**The Solution:**
+
+```ruby
+# test/application_system_test_case.rb
+class ApplicationSystemTestCase < ActionDispatch::SystemTestCase
+  setup do
+    # CRITICAL: Force Capybara to use "localhost" instead of "127.0.0.1"
+    Capybara.server_host = "localhost"
+  end
+end
+```
+
+**Why this works:**
+- WebAuthn spec treats `localhost` as a special case (domain name, not IP)
+- Capybara defaults to `127.0.0.1` which WebAuthn rejects
+- `rp_id: "localhost"` matches origin `http://localhost:PORT`
+- Without this, you get "This is an invalid domain" errors
+
+**Configuration must match:**
+```ruby
+# config/initializers/webauthn.rb
+WebAuthn.configure do |config|
+  config.rp_id = if Rails.env.test?
+    "localhost"  # MUST match Capybara.server_host
+  else
+    "your-domain.com"
+  end
+end
+```
+
+#### 2. Handle Capybara's Random Ports
+
+**The Problem:**
+Capybara uses random ports (e.g., `http://localhost:40123`), so you can't hardcode allowed origins.
+
+**The Solution:**
+
+```ruby
+# config/initializers/webauthn.rb
+
+# Custom origin checker for Capybara's random ports
+class TestOriginChecker
+  def include?(origin)
+    uri = URI.parse(origin)
+    (uri.host == "localhost" || uri.host == "127.0.0.1") && uri.scheme == "http"
+  rescue URI::InvalidURIError
+    false
+  end
+end
+
+WebAuthn.configure do |config|
+  config.allowed_origins = if Rails.env.test?
+    TestOriginChecker.new  # Matches any localhost port
+  else
+    [ ENV.fetch("WEBAUTHN_ORIGIN") ]
+  end
+end
+```
+
+**Why this works:**
+- webauthn-ruby expects object responding to `include?(origin)`
+- Pattern matches any `http://localhost:*` origin
+- Works with Capybara's random port selection
+- Can't use array of hardcoded URLs
+
+####3. WebAuthn Encoding (CRITICAL)
+
+```ruby
+# config/initializers/webauthn.rb
+WebAuthn.configure do |config|
+  # MUST be :base64url for native browser APIs
+  config.encoding = :base64url  # NOT :base64
+end
+```
+
+**Why :base64url:**
+- Browser's `PublicKeyCredential.parseCreationOptionsFromJSON()` requires base64url (RFC 4648 §5)
+- Base64url uses `-` and `_` instead of `+` and `/`, no padding
+- Standard `:base64` causes: `EncodingError: 'challenge' contains invalid base64url data`
+
+#### 4. Complete Test Configuration Checklist
+
+**test/application_system_test_case.rb:**
+```ruby
+class ApplicationSystemTestCase < ActionDispatch::SystemTestCase
+  driven_by :selenium, using: :headless_chrome
+
+  setup do
+    # CRITICAL: Set hostname to localhost (not 127.0.0.1)
+    Capybara.server_host = "localhost"
+  end
+end
+```
+
+**config/initializers/webauthn.rb:**
+```ruby
+WebAuthn.configure do |config|
+  # Origin and RP ID configuration
+  config.origin = if Rails.env.test?
+    "http://localhost:3000"  # Not used by Capybara (uses random ports)
+  elsif Rails.env.production?
+    ENV.fetch('WEBAUTHN_ORIGIN')
+  else
+    'http://localhost:3000'
+  end
+
+  config.rp_id = if Rails.env.test?
+    "localhost"  # MUST match Capybara.server_host
+  elsif Rails.env.production?
+    ENV.fetch('WEBAUTHN_RP_ID')
+  else
+    'localhost'
+  end
+
+  # CRITICAL: Use base64url encoding for native browser APIs
+  config.encoding = :base64url  # NOT :base64
+
+  # Allowed origins configuration
+  config.allowed_origins = if Rails.env.test?
+    TestOriginChecker.new  # Handles Capybara's random ports
+  else
+    [ config.origin ]
+  end
+
+  config.credential_options_timeout = 60_000
+  config.algorithms = ['ES256', 'RS256']
+end
+
+# Custom origin checker for test environment
+class TestOriginChecker
+  def include?(origin)
+    uri = URI.parse(origin)
+    (uri.host == "localhost" || uri.host == "127.0.0.1") && uri.scheme == "http"
+  rescue URI::InvalidURIError
+    false
+  end
+end
+```
+
+### Test Helper Methods
+
+```ruby
+# test/application_system_test_case.rb
+class ApplicationSystemTestCase < ActionDispatch::SystemTestCase
+  # Setup virtual authenticator for passkey testing
+  def setup_virtual_authenticator(options = {})
+    default_options = Selenium::WebDriver::VirtualAuthenticatorOptions.new(
+      protocol: :ctap2,           # FIDO2/WebAuthn protocol
+      transport: :internal,       # Platform authenticator (Touch ID, Face ID)
+      resident_key: true,         # REQUIRED for passkeys
+      user_verified: true,        # Auto-verify user (bypass biometric prompt)
+      user_verification: true     # Supports user verification
+    )
+
+    # Merge custom options
+    options.each { |key, value| default_options.send("#{key}=", value) }
+
+    # Add to browser
+    @virtual_authenticator = page.driver.browser.add_virtual_authenticator(default_options)
+  end
+
+  def remove_virtual_authenticator
+    if @virtual_authenticator
+      @virtual_authenticator.remove!
+      @virtual_authenticator = nil
+    end
+  rescue Selenium::WebDriver::Error::InvalidArgumentError
+    @virtual_authenticator = nil
+  end
+
+  # Register passkey through UI (helper for tests)
+  def register_passkey_via_ui(user)
+    token = user.generate_magic_link_token
+    visit magic_link_path(token)
+
+    assert_current_path new_credential_path
+    click_button "Create passkey"
+    assert_current_path jobs_path, wait: 10
+
+    user.reload
+    user.credentials.last
+  end
+end
+```
+
+### VirtualAuthenticatorOptions Reference
+
+| Parameter | Type | Default | Purpose |
+|-----------|------|---------|---------|
+| `protocol` | Symbol | `:ctap2` | `:ctap2` (WebAuthn/FIDO2) or `:u2f` (legacy) |
+| `transport` | Symbol | `:usb` | `:internal` (platform), `:usb`, `:nfc`, `:ble` |
+| `resident_key` | Boolean | `false` | **MUST be `true` for passkeys** |
+| `user_verification` | Boolean | `false` | Whether authenticator supports biometrics/PIN |
+| `user_verified` | Boolean | `false` | Auto-verify user (bypass prompts in tests) |
+| `user_consenting` | Boolean | `true` | Auto-consent to credential usage |
+
+**For passkey testing:**
+```ruby
+setup_virtual_authenticator(
+  protocol: :ctap2,        # Modern WebAuthn
+  transport: :internal,    # Platform authenticator
+  resident_key: true,      # REQUIRED for passkeys
+  user_verified: true      # Skip biometric prompts
+)
+```
+
+### Test Patterns
+
+#### Pattern 1: Registration Test
+
+```ruby
+class PasskeyAuthenticationTest < ApplicationSystemTestCase
+  setup do
+    @user = users(:one)
+    @user.credentials.destroy_all  # Clean slate
+    setup_virtual_authenticator
+  end
+
+  teardown do
+    remove_virtual_authenticator
+  end
+
+  test "user registers passkey via magic link" do
+    token = @user.generate_magic_link_token
+    visit magic_link_path(token)
+
+    assert_current_path new_credential_path
+    click_button "Create passkey"
+
+    # Virtual authenticator handles WebAuthn ceremony automatically
+    assert_current_path jobs_path, wait: 10
+
+    @user.reload
+    assert @user.passkey_registered?
+    assert_equal 1, @user.credentials.count
+  end
+end
+```
+
+#### Pattern 2: Authentication Test
+
+```ruby
+test "user authenticates with passkey" do
+  # Register credential first
+  credential = register_passkey_via_ui(@user)
+  assert credential.present?
+
+  # Logout
+  find("el-dropdown button").click
+  click_on "Sign out"
+
+  # Login with passkey
+  visit login_path
+  click_button "Sign in with passkey"
+
+  # Virtual authenticator provides registered credential
+  assert_current_path jobs_path, wait: 10
+  assert_text @user.initials
+end
+```
+
+#### Pattern 3: Using Test Setup Helper
+
+```ruby
+class JobWorkflowTest < ApplicationSystemTestCase
+  setup do
+    @user = users(:one)
+    setup_virtual_authenticator
+    register_passkey_via_ui(@user)  # User now logged in
+  end
+
+  teardown do
+    remove_virtual_authenticator
+  end
+
+  test "complete job workflow" do
+    # User already logged in from setup
+    assert_current_path jobs_path
+    # Continue with test...
+  end
+end
+```
+
+### Critical Implementation Details
+
+#### Credential ID Storage (CRITICAL BUG FIX)
+
+**Problem:**
+webauthn-ruby returns credential IDs as base64url strings, but storing them directly in binary columns causes mismatch during authentication.
+
+**Symptoms:**
+```ruby
+ActiveRecord::RecordNotFound: Couldn't find Credential
+```
+
+**Root Cause:**
+```ruby
+# During REGISTRATION (WRONG):
+credential.create!(
+  credential_id: webauthn_credential.id  # String "YH119tlb..." stored as ASCII bytes
+)
+
+# During AUTHENTICATION:
+credential_id = Base64.urlsafe_decode64(params[:credential][:id])  # Binary bytes
+Credential.find_by!(credential_id: credential_id)  # Won't match!
+```
+
+**Solution:**
+```ruby
+# During REGISTRATION (CORRECT):
+credential.create!(
+  credential_id: Base64.urlsafe_decode64(webauthn_credential.id),  # Decode to binary
+  public_key: webauthn_credential.public_key,
+  sign_count: webauthn_credential.sign_count
+)
+
+# During AUTHENTICATION (CORRECT):
+credential_id = Base64.urlsafe_decode64(params[:credential][:id])
+credential = Credential.find_by!(credential_id: credential_id)  # Matches!
+```
+
+#### CSRF Token Handling in Tests
+
+```javascript
+// app/javascript/controllers/webauthn_controller.js
+get csrfToken() {
+  // CSRF token may not be available in test environment
+  return document.querySelector("[name='csrf-token']")?.content || ''
+}
+```
+
+**Why this works:**
+- Production: CSRF meta tag present, token included
+- Test: CSRF may be missing, but Rails test doesn't validate
+- Optional chaining (`?.`) prevents errors
+- Fallback to empty string maintains compatibility
+
+### Testing Best Practices
+
+1. **Clean fixtures between tests:**
+```ruby
+setup do
+  @user = users(:one)
+  @user.credentials.destroy_all  # Remove fixture credentials
+  setup_virtual_authenticator
+end
+```
+
+**Why:** Fixture credentials don't have matching private keys in virtual authenticator.
+
+2. **Use helper methods:**
+```ruby
+# ✅ GOOD
+register_passkey_via_ui(@user)
+
+# ❌ BAD - duplicated setup code
+token = @user.generate_magic_link_token
+visit magic_link_path(token)
+click_button "Create passkey"
+```
+
+3. **Cleanup in teardown:**
+```ruby
+teardown do
+  remove_virtual_authenticator  # Prevent credential leakage between tests
+end
+```
+
+4. **Wait for async operations:**
+```ruby
+# WebAuthn ceremonies are async (JavaScript + crypto)
+assert_current_path jobs_path, wait: 10  # NOT wait: 2
+
+# Or explicit waits
+using_wait_time(15) do
+  assert_current_path jobs_path
+end
+```
+
+5. **Test isolation:**
+Each test should have its own virtual authenticator to prevent credential leakage.
+
+### Troubleshooting WebAuthn Tests
+
+#### Error: "This is an invalid domain"
+
+```
+SecurityError: This is an invalid domain.
+```
+
+**Cause:** RP ID is IP address or doesn't match origin host.
+
+**Solution:**
+```ruby
+# config/initializers/webauthn.rb
+config.rp_id = "localhost"  # NOT "127.0.0.1"
+
+# test/application_system_test_case.rb
+Capybara.server_host = "localhost"  # NOT "127.0.0.1"
+```
+
+#### Error: "challenge contains invalid base64url data"
+
+```
+EncodingError: 'challenge' contains invalid base64url data
+```
+
+**Cause:** WebAuthn encoding set to `:base64` instead of `:base64url`.
+
+**Solution:**
+```ruby
+# config/initializers/webauthn.rb
+config.encoding = :base64url  # NOT :base64
+```
+
+#### Error: "excludeCredentials contains invalid base64url data"
+
+**Cause:** Credential IDs not base64url encoded for exclusion list.
+
+**Solution:**
+```ruby
+# In registration controller
+excluded_ids = user.credentials.pluck(:credential_id).map do |binary_id|
+  Base64.urlsafe_encode64(binary_id, padding: false)
+end
+
+options = WebAuthn::Credential.options_for_create(
+  exclude: excluded_ids
+)
+```
+
+#### Virtual Authenticator Not Intercepting
+
+**Symptoms:**
+- Page stays on passkey setup after clicking button
+- No redirect to jobs_path
+- No credential created
+
+**Checks:**
+1. Virtual authenticator created before page visit?
+```ruby
+setup do
+  setup_virtual_authenticator  # BEFORE visiting pages
+end
+```
+
+2. Options include `resident_key: true`?
+```ruby
+options.resident_key = true  # Required for passkeys
+```
+
+3. Transport set to `:internal`?
+```ruby
+options.transport = :internal  # Platform authenticator
+```
+
+4. Capybara using localhost?
+```ruby
+Capybara.server_host = "localhost"  # NOT "127.0.0.1"
+```
+
+#### Credential ID Mismatch
+
+**Symptoms:**
+- Registration works, authentication fails
+- "Couldn't find Credential" error
+
+**Cause:** Storing credential ID as string instead of binary.
+
+**Solution:** See "Credential ID Storage" section above.
+
+### Browser Compatibility
+
+| Browser | Virtual Authenticator | Notes |
+|---------|----------------------|-------|
+| Chrome | ✅ Full support | 75+, recommended for tests |
+| Edge | ✅ Full support | 79+ (Chromium-based) |
+| Firefox | ❌ Limited | WebDriver BiDi required |
+| Safari | ❌ Not supported | No virtual authenticator API |
+
+**For Rails tests:** Use Chrome (default in system tests), works in headless mode for CI/CD.
+
+### Complete Test Example
+
+```ruby
+require "application_system_test_case"
+
+class PasskeyAuthenticationTest < ApplicationSystemTestCase
+  setup do
+    @user = users(:one)
+    @user.credentials.destroy_all
+    setup_virtual_authenticator
+  end
+
+  teardown do
+    remove_virtual_authenticator
+  end
+
+  test "user registers passkey via magic link" do
+    token = @user.generate_magic_link_token
+    visit magic_link_path(token)
+
+    assert_current_path new_credential_path
+    click_button "Create passkey"
+
+    assert_current_path jobs_path, wait: 10
+
+    @user.reload
+    assert @user.passkey_registered?
+    assert_equal 1, @user.credentials.count
+  end
+
+  test "user authenticates with passkey" do
+    credential = register_passkey_via_ui(@user)
+    assert credential.present?
+
+    find("el-dropdown button").click
+    click_on "Sign out"
+
+    visit login_path
+    click_button "Sign in with passkey"
+
+    assert_current_path jobs_path, wait: 10
+    assert_text @user.initials
+  end
+
+  test "expired magic link is rejected" do
+    travel 31.minutes do
+      token = @user.generate_magic_link_token
+    end
+
+    visit magic_link_path(token)
+    assert_current_path login_path
+    assert_text "Invalid or expired setup link"
+  end
+end
+```
+
+## Modern 2025 WebAuthn Patterns
+
+### Native JSON Serialization APIs
+
+Modern browsers (2024+) support native JSON serialization for WebAuthn, eliminating the need for polyfills or manual encoding/decoding.
+
+**Legacy approach (pre-2024):**
+```javascript
+// Manual base64url encoding/decoding required
+function bufferToBase64url(buffer) {
+  return btoa(String.fromCharCode(...new Uint8Array(buffer)))
+    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '')
+}
+```
+
+**Modern approach (2024+):**
+```javascript
+// Registration
+const options = await fetch('/webauthn/registration/begin').then(r => r.json())
+
+// Native parsing (no manual conversion needed)
+const publicKeyOptions = PublicKeyCredential.parseCreationOptionsFromJSON(options)
+
+const credential = await navigator.credentials.create({ publicKey: publicKeyOptions })
+
+// Native serialization (no manual conversion needed)
+await fetch('/webauthn/registration/complete', {
+  method: 'POST',
+  body: JSON.stringify({ credential: credential.toJSON() })
+})
+```
+
+**Browser support:**
+- Chrome 108+
+- Safari 16.1+
+- Firefox 122+
+- Edge 108+
+
+**Benefits:**
+- ✅ No polyfills or helper libraries needed
+- ✅ Handles all ArrayBuffer ↔ base64url conversion
+- ✅ Simpler, more maintainable code
+- ✅ Standards-compliant
+
+### PublicKeyCredentialHints (Chrome 129+)
+
+New browser feature to guide UI for credential selection.
+
+```javascript
+const options = await fetch('/webauthn/authentication/begin').then(r => r.json())
+
+// Add hints for better UX
+options.hints = ['client-device', 'hybrid']  // Prefer device passkeys, allow QR code
+
+const credential = await navigator.credentials.get({
+  publicKey: PublicKeyCredential.parseRequestOptionsFromJSON(options)
+})
+```
+
+**Available hints:**
+- `client-device` - Prefer passkeys on current device
+- `security-key` - Prefer external security keys (YubiKey)
+- `hybrid` - Allow cross-device authentication (QR code)
+
+**Server-side:**
+```ruby
+def begin
+  options = WebAuthn::Credential.options_for_get(
+    user_verification: 'preferred'
+  )
+
+  # Add hints to guide browser UI
+  options_hash = JSON.parse(options.to_json)
+  options_hash['hints'] = ['client-device', 'hybrid']
+
+  render json: options_hash
+end
+```
+
+### Conditional UI (Autofill)
+
+Passkeys can appear in autofill suggestions for email/username fields.
+
+**HTML:**
+```erb
+<input
+  type="email"
+  name="email"
+  autocomplete="username webauthn"  <%# CRITICAL %>
+  placeholder="Enter your email"
+>
+```
+
+**JavaScript:**
+```javascript
+// Check if conditional UI is available
+const available = await PublicKeyCredential.isConditionalMediationAvailable()
+
+if (available) {
+  // Start conditional UI flow
+  const options = await fetch('/webauthn/authentication/begin').then(r => r.json())
+
+  const credential = await navigator.credentials.get({
+    publicKey: PublicKeyCredential.parseRequestOptionsFromJSON(options),
+    mediation: 'conditional'  // Enable autofill
+  })
+
+  // Send credential to server
+  await fetch('/webauthn/authentication/complete', {
+    method: 'POST',
+    body: JSON.stringify({ credential: credential.toJSON() })
+  })
+}
+```
+
+**Benefits:**
+- ✅ Seamless UX - passkeys appear in autofill dropdown
+- ✅ No extra "Sign in with passkey" button needed
+- ✅ Works alongside email/password if hybrid auth
+
+**Browser support:**
+- Chrome 108+
+- Safari 16.4+
+- Edge 108+
+
 ## References
 
 - [W3C WebAuthn Specification](https://www.w3.org/TR/webauthn-3/)
 - [webauthn-ruby gem](https://github.com/cedarcode/webauthn-ruby)
 - [FIDO Alliance](https://fidoalliance.org/passkeys/)
 - [Selenium Virtual Authenticator](https://www.selenium.dev/documentation/webdriver/interactions/virtual_authenticator/)
+- [Selenium Ruby API - VirtualAuthenticatorOptions](https://www.selenium.dev/selenium/docs/api/rb/Selenium/WebDriver/VirtualAuthenticatorOptions.html)
+- [MDN Web Authentication API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Authentication_API)
