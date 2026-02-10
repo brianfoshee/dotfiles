@@ -31,7 +31,9 @@ fi
 # setup rbenv.
 # When entering tmux, this will add a duplicate entry into PATH. However, it's
 # needed because otherwise rbenv will come after the system ruby path.
-eval "$(rbenv init - zsh)"
+if command -v rbenv &>/dev/null; then
+  eval "$(rbenv init - zsh)"
+fi
 
 # for setting up git / pgp
 # https://gist.github.com/troyfontaine/18c9146295168ee9ca2b30c00bd1b41e
@@ -63,14 +65,16 @@ export HISTSIZE=10000         # Increases size of history
 export SAVEHIST=10000
 export HISTIGNORE="&:ls:ll:la:l.:tns:tls:tas:gc:ga:pwd:exit:clear:clr:[bf]g:history"
 
-export BREW_PREFIX="$(brew --prefix)"
-export HOMEBREW_CASK_OPTS="--appdir=/Applications"
-export HOMEBREW_BUNDLE_NO_LOCK=true
 export GOPATH=$HOME/Code
 export PATH="$HOME/Code/bin:$PATH"
-export EDITOR=$BREW_PREFIX/bin/vim
-export PSQL_EDITOR=$EDITOR
-export THOR_MERGE=$BREW_PREFIX/bin/vimdiff
+if command -v brew &>/dev/null; then
+  export BREW_PREFIX="$(brew --prefix)"
+  export HOMEBREW_CASK_OPTS="--appdir=/Applications"
+  export HOMEBREW_BUNDLE_NO_LOCK=true
+  export EDITOR=$BREW_PREFIX/bin/vim
+  export PSQL_EDITOR=$EDITOR
+  export THOR_MERGE=$BREW_PREFIX/bin/vimdiff
+fi
 
 # up/down keys use history search using everything up to cursor, not just the
 # first word (which would be history-search-backward and history-search-forward
@@ -85,11 +89,6 @@ if [[ -s ${HOME}/.github-api-token ]]; then
   source $HOME/.github-api-token
 fi
 
-# export my anthropic api token
-if [[ -s ${HOME}/.anthropic-api-token ]]; then
-  source $HOME/.anthropic-api-token
-fi
-
 if type brew &>/dev/null; then
   FPATH=$BREW_PREFIX/share/zsh/site-functions:$FPATH
 fi
@@ -100,7 +99,9 @@ export PATH="/Users/brian/.local/bin:$PATH"
 # autoload -U +X bashcompinit && bashcompinit
 
 # add ssh key for use with git commit signing
-ssh-add --apple-use-keychain ~/.ssh/github &>/dev/null
+if [[ "$(uname -s)" == "Darwin" ]]; then
+  ssh-add --apple-use-keychain ~/.ssh/github &>/dev/null
+fi
 
 # Added by LM Studio CLI (lms)
 export PATH="$PATH:/Users/brian/.lmstudio/bin"
