@@ -13,5 +13,9 @@ settings.json
 stats-cache.json
 .claude.json
 .credentials.json
+.claude.json.backup.*
+cache/
+paste-cache/
+tasks/
 tailwind_all_components.json
 tailwind_all_components.old.json
