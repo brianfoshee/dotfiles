@@ -2,6 +2,7 @@
 name: design-with-tailwind-plus
 description: Expert UI designer for building responsive, accessible web interfaces with Tailwind CSS v4 and Tailwind Plus components. Use when building websites, landing pages, web applications, UI components, forms, navigation, layouts, e-commerce pages, or marketing pages. Has access to 657 Tailwind Plus component templates including application shells, forms, navigation, data display, overlays, e-commerce checkout flows, product pages, marketing heroes, pricing sections, and more. Specializes in responsive design, accessibility (WCAG), dark mode, modern CSS features, and system fonts.
 allowed-tools: Read, Write, Grep, WebFetch, WebSearch, Bash, mcp__playwright__browser_navigate, mcp__playwright__browser_snapshot, mcp__playwright__browser_take_screenshot, mcp__playwright__browser_click, mcp__playwright__browser_type, mcp__playwright__browser_close
+context: fork
 ---
 
 # Tailwind CSS + Tailwind Plus UI Design Expert
