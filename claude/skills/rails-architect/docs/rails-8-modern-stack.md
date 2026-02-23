@@ -260,16 +260,17 @@ In 8.2, `config.assume_ssl` defaults to `false` (previously `true` in 8.1). If d
 config.assume_ssl = true
 ```
 
-## Unified Credentials
+## Combined Credentials
 
-Rails 8.2 introduces `Rails.app.creds` as the primary credentials API:
+Rails 8.2 introduces `Rails.app.creds`, a combined lookup that checks ENV first, then falls back to encrypted credentials:
 
 ```ruby
-Rails.app.creds.stripe_key         # reads from credentials
-Rails.app.creds.dig(:aws, :bucket) # nested access
+Rails.app.creds.require(:stripe_api_key)                    # raises if missing from both
+Rails.app.creds.option(:redis_url, default: "redis://localhost:6379")  # optional with default
+Rails.app.creds.require(:aws, :bucket)                      # nested: checks AWS__BUCKET env var first
 ```
 
-`Rails.app` also exposes `Rails.app.name` and `Rails.app.revision`.
+`Rails.application.credentials` still works for direct encrypted-file access. `Rails.app.creds` is the recommended unified API.
 
 ## Deployment Revision Tracking
 
