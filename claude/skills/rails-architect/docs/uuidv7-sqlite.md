@@ -1,6 +1,6 @@
 # UUIDv7 Primary Keys with SQLite
 
-Complete guide to implementing UUIDv7 as primary keys in Rails applications using SQLite, based on production Rails 8.1 implementation.
+Complete guide to implementing UUIDv7 as primary keys in Rails applications using SQLite, based on production Rails 8.2 implementation.
 
 ## Overview
 

@@ -1,10 +1,10 @@
-# Production Infrastructure for Rails 8.1
+# Production Infrastructure for Rails 8.2
 
-Production-proven deployment patterns for Rails 8.1 applications using Kamal, SQLite with Litestream replication, and modern cloud infrastructure.
+Production-proven deployment patterns for Rails 8.2 applications using Kamal, SQLite with Litestream replication, and modern cloud infrastructure.
 
 ## Overview
 
-This guide covers the complete production infrastructure stack for deploying Rails 8.1 applications:
+This guide covers the complete production infrastructure stack for deploying Rails 8.2 applications:
 - **Kamal** - Container deployment without Kubernetes
 - **Litestream** - Continuous SQLite replication to cloud storage
 - **Cloud-init** - VM provisioning automation
@@ -911,7 +911,7 @@ Thruster automatically:
 
 ### Application Security
 
-1. **SSL everywhere**: Strict SSL mode with HSTS
+1. **SSL everywhere**: Strict SSL mode with HSTS. In Rails 8.2, `config.assume_ssl` defaults to `false`; set it to `true` when behind an SSL-terminating proxy.
 2. **Secrets management**: Environment variables, never in code
 3. **Security scanning**: Brakeman, bundler-audit, importmap audit in CI
 4. **Regular updates**: Dependabot for dependency updates
@@ -984,6 +984,14 @@ class HealthController < ApplicationController
     false
   end
 end
+```
+
+### Deployment Revision
+
+Use `Rails.app.revision` (from `REVISION` file or git SHA) for error reporting and cache keys:
+
+```ruby
+Sentry.set_context("app", { revision: Rails.app.revision })
 ```
 
 ### Logging

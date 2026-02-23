@@ -21,7 +21,7 @@ Production-proven pattern for using Lexxy instead of Trix as the rich text edito
 
 ```ruby
 # Gemfile
-gem "lexxy", "~> 0.1.26.beta"
+gem "lexxy", "~> 0.7.4.beta"
 ```
 
 ### JavaScript Import
@@ -1133,41 +1133,118 @@ export default class extends Controller {
 
 ---
 
-## Rails Main: Editor Registry (Future)
+## Pluggable Editor Registry
 
-Rails main now has a pluggable editor system. This is the future integration path for Lexxy.
+Rails 8.2 ships a pluggable editor system for ActionText. Editors register via naming convention and implement three methods.
 
-### Editor Interface
+### Editor Base Class
 
 ```ruby
+# Editors live in ActionText::Editor::<Name>Editor
 class ActionText::Editor::LexxyEditor < ActionText::Editor
-  # Convert editor HTML → canonical ActionText format
+  # Convert editor HTML → canonical ActionText storage format
   def as_canonical(editable_fragment)
-    # Lexxy already outputs canonical format, so this is a no-op
-    editable_fragment
+    editable_fragment  # Lexxy already outputs canonical format
   end
 
-  # Convert canonical format → editor HTML
+  # Convert canonical format → editor-specific HTML for editing
   def as_editable(canonical_fragment)
-    # Also a no-op since Lexxy uses the same format
-    canonical_fragment
+    canonical_fragment  # Lexxy uses the same format
+  end
+
+  # Render the editor tag in forms
+  def editor_tag(form, method, **options)
+    form.lexxy_rich_text_area(method, **options)
   end
 end
 ```
 
-### Future Configuration (Speculative)
+### Configuration
 
 ```ruby
 # config/application.rb
 config.action_text.editors = {
-  lexxy: { some_option: true }
+  lexxy: {},       # Options passed to editor initializer
+  trix: {}         # TrixEditor is the built-in reference implementation
 }
 
-# Per-model selection
+config.action_text.editor = :trix  # Default editor for rich_textarea
+```
+
+Naming convention: `:lexxy` resolves to `ActionText::Editor::LexxyEditor`.
+
+### Per-Model Editor Selection
+
+```ruby
 class Article < ApplicationRecord
   has_rich_text :content, editor: :lexxy
 end
 ```
+
+### Deprecation Note
+
+`to_trix_html` is deprecated in favor of `to_editor_html`, which delegates to the configured editor's `as_editable` method.
+
+## Tables
+
+Lexxy 0.7.x adds table support. Tables are rendered as standard HTML (`<table>`, `<tr>`, `<td>`) and stored in ActionText content. Add `table`, `tbody`, `tr`, `th`, `td` to your sanitizer's allowed tags (Lexxy's engine does this automatically).
+
+## Text Highlighting
+
+Lexxy 0.7.x supports text highlighting with 9 color slots exposed as CSS custom properties:
+
+```css
+/* Override in your stylesheet */
+--highlight-1: #fef08a;  /* yellow */
+--highlight-2: #bbf7d0;  /* green */
+/* ... through --highlight-9 */
+```
+
+## Extension System
+
+Lexxy 0.7.x introduces an experimental extension API for adding custom editor behavior:
+
+```javascript
+import { Extension } from "lexxy"
+
+class MyExtension extends Extension {
+  // Extension lifecycle and node/mark registration
+}
+
+Lexxy.configure({
+  global: {
+    extensions: [new MyExtension()]
+  }
+})
+```
+
+The extension API is experimental and may change between beta releases.
+
+## Remote Video Attachable
+
+Pattern for embedding remote videos (YouTube, Vimeo) as ActionText attachments:
+
+```ruby
+class RemoteVideo < ApplicationRecord
+  include ActionText::Attachable
+
+  validates :url, presence: true
+
+  def content_type
+    "application/vnd.actiontext.video"
+  end
+
+  def to_attachable_partial_path
+    "remote_videos/embed"
+  end
+
+  def attachable_plain_text_representation(caption = nil)
+    "[Video: #{caption || url}]"
+  end
+end
+```
+
+Use with a `/video` prompt trigger or link unfurling via `lexxy:insert-link`.
 
 ---
 

@@ -1,6 +1,6 @@
 # Passkey Authentication (WebAuthn) for Rails
 
-Production-ready passkey authentication implementation pattern based on real-world Rails 8.1 application.
+Production-ready passkey authentication implementation pattern based on real-world Rails 8.2 application.
 
 ## Overview
 
