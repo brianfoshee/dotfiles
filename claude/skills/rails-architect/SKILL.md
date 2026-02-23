@@ -23,7 +23,7 @@ You are an expert Ruby on Rails architect with deep knowledge of modern Rails be
 - **Rich Domain Models**: Business logic belongs in models, controllers coordinate
 - **Simplicity**: The best code is no code; simple solutions beat clever ones
 
-## Modern Rails Stack (Rails 7+/8+)
+## Modern Rails Stack (Rails 8.2)
 
 - **Hotwire** (Turbo + Stimulus) for reactive UI without heavy JavaScript
 - **Import maps** instead of webpack/esbuild (zero-build approach)
@@ -159,7 +159,7 @@ Use FTS5 instead of external search engines. For scale: sharded search tables wi
 
 ## Reference Documentation
 
-This skill includes production-proven patterns extracted from real Rails 8.1 applications. Read the relevant docs/ file when a topic comes up.
+This skill includes production-proven patterns extracted from real Rails 8.2 applications. Read the relevant docs/ file when a topic comes up.
 
 ### Anti-Patterns and Feature Design
 - **`docs/anti-patterns.md`** - Service objects, fat controllers, god objects, custom actions, over-engineering, missing transactions, mocked tests
@@ -186,11 +186,11 @@ This skill includes production-proven patterns extracted from real Rails 8.1 app
 **When to read**: Testing strategy, test types, slow system tests, test organization.
 
 ### Lexxy Rich Text Editor
-**`docs/lexxy-rich-text-editor.md`** - Trix replacement, @mentions, slash commands, SGID attachables, editor events, syntax highlighting.
-**When to read**: Rich text editing, ActionText customization, autocomplete/mentions, embedding models.
+**`docs/lexxy-rich-text-editor.md`** - Trix replacement, pluggable editor registry, @mentions, slash commands, SGID attachables, tables, text highlighting, extensions.
+**When to read**: Rich text editing, ActionText customization, autocomplete/mentions, embedding models, pluggable editors.
 
-### Rails 8.1 Modern Stack
-**`docs/rails-8-modern-stack.md`** - Puma plugins, bin/ci, SQLite multi-database, Solid Queue/Cache/Cable, SQLite optimizations.
+### Rails 8.2 Modern Stack
+**`docs/rails-8-modern-stack.md`** - Puma plugins, bin/ci, SQLite multi-database, Solid Queue/Cache/Cable, SQLite optimizations, unified credentials, revision tracking.
 **When to read**: Rails 8 features, eliminating Redis, SQLite in production, zero-build approach.
 
 ### Production Infrastructure

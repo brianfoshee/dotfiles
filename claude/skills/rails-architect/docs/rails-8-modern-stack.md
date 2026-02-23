@@ -1,15 +1,15 @@
-# Rails 8.1 Modern Stack
+# Rails 8.2 Modern Stack
 
-Production-proven patterns for building Rails 8.1 applications with zero-build, zero-Redis architecture, based on real-world Rails 8.1 implementation.
+Production-proven patterns for building Rails 8.2 applications with zero-build, zero-Redis architecture, based on real-world Rails 8.2 implementation.
 
 ## Overview
 
-Rails 8.1 introduces a paradigm shift toward simplicity: single-process development, database-backed infrastructure, and production-ready SQLite. This guide shows how to build modern Rails applications without webpack, Redis, or complex process management.
+Rails 8.2 introduces a paradigm shift toward simplicity: single-process development, database-backed infrastructure, and production-ready SQLite. This guide shows how to build modern Rails applications without webpack, Redis, or complex process management.
 
 ## The Modern Stack
 
 **Core Technologies:**
-- **Rails 8.1** - Latest stable release
+- **Rails 8.2** - Latest stable release
 - **SQLite** - Primary database + Queue/Cache/Cable
 - **Puma Plugins** - Integrated CSS watching and background jobs
 - **Solid Queue/Cache/Cable** - Database-backed (no Redis)
@@ -48,7 +48,7 @@ foreman start -f Procfile.dev
 - Hard to debug (which process has the error?)
 - Process lifecycle management complexity
 
-### The New Way (Rails 8.1)
+### The New Way (Rails 8.2)
 
 ```ruby
 # config/puma.rb
@@ -123,31 +123,37 @@ bin/dev  # Queue worker included automatically
 
 ### The Game Changer
 
-Rails 8.1 includes a local CI runner that runs your **exact** CI pipeline on your development machine.
+Rails 8.2 includes a local CI runner that runs your **exact** CI pipeline on your development machine.
 
 ```ruby
 # config/ci.rb
 CI.run do
   step "Setup", "bin/setup --skip-server"
-  step "Style: Ruby", "bin/rubocop"
-  step "Security: Gem audit", "bin/bundler-audit"
-  step "Security: Importmap audit", "bin/importmap audit"
-  step "Security: Brakeman", "bin/brakeman --quiet --no-pager --exit-on-warn --exit-on-error"
+
+  group "Checks", parallel: 2 do
+    step "Style: Ruby", "bin/rubocop"
+    step "Security: Gem audit", "bin/bundler-audit"
+    step "Security: Importmap audit", "bin/importmap audit"
+    step "Security: Brakeman", "bin/brakeman --quiet --no-pager --exit-on-warn --exit-on-error"
+  end
+
   step "Tests: Rails", "bin/rails test"
   step "Tests: System", "bin/rails test:system"
   step "Tests: Seeds", "env RAILS_ENV=test bin/rails db:seed:replant"
 end
 ```
 
+Steps inside a `group` with `parallel:` run concurrently, reducing CI time.
+
 ### Why This Matters
 
-**Before Rails 8.1:**
+**Before Rails 8.2:**
 - Push to GitHub → Wait for CI → Fails → Fix → Repeat
 - Feedback loop: 5-10 minutes per iteration
 - CI costs for every failed attempt
 - Can't easily test CI changes locally
 
-**With Rails 8.1:**
+**With Rails 8.2:**
 ```bash
 bin/ci  # Runs entire CI suite in ~2 minutes
 ```
@@ -214,6 +220,68 @@ bin/ci
 ✓ Tests: Seeds
 
 All checks passed!
+```
+
+## Rails 8.2 Defaults
+
+### Jobs After Transaction Commit
+
+```ruby
+# config/application.rb (default in 8.2)
+config.active_job.enqueue_after_transaction_commit = true
+```
+
+Jobs enqueued inside a transaction now wait for the transaction to commit before being dispatched. Prevents workers from picking up a job before the data it depends on is visible.
+
+### Active Storage Immediate Analysis
+
+```ruby
+# config/application.rb (default in 8.2)
+config.active_storage.analyze = :immediately
+```
+
+Blobs are analyzed (dimensions, metadata) before validation callbacks run, so `has_one_attached :avatar, content_type: "image/*"` validations work on first save.
+
+### CSRF Header-Only Verification
+
+```ruby
+# config/application.rb
+config.action_controller.csrf_token_storage_strategy = :header
+```
+
+Allows verifying CSRF tokens from the `X-CSRF-Token` header only, skipping the form `authenticity_token` param. Useful for Turbo/fetch-heavy apps where forms always submit via JavaScript.
+
+### Kamal SSL Default Change
+
+In 8.2, `config.assume_ssl` defaults to `false` (previously `true` in 8.1). If deploying behind SSL-terminating proxy (Cloudflare, Kamal with SSL), explicitly set:
+
+```ruby
+# config/environments/production.rb
+config.assume_ssl = true
+```
+
+## Unified Credentials
+
+Rails 8.2 introduces `Rails.app.creds` as the primary credentials API:
+
+```ruby
+Rails.app.creds.stripe_key         # reads from credentials
+Rails.app.creds.dig(:aws, :bucket) # nested access
+```
+
+`Rails.app` also exposes `Rails.app.name` and `Rails.app.revision`.
+
+## Deployment Revision Tracking
+
+```ruby
+Rails.app.revision  # => "abc1234" (from REVISION file or git SHA)
+```
+
+Useful for cache keys, error reporting, and deployment verification:
+
+```ruby
+config.cache_store = :solid_cache_store, { namespace: Rails.app.revision }
+Sentry.set_context("app", { revision: Rails.app.revision })
 ```
 
 ## SQLite Multi-Database Architecture
@@ -411,7 +479,7 @@ timeout: 5000  # Must be >= 5000ms to enable
 Multiple technologies to manage
 ```
 
-**New stack (Rails 8.1):**
+**New stack (Rails 8.2):**
 ```
 ┌─────────────┐
 │ Rails App   │
@@ -705,7 +773,7 @@ bin/rails db:migrate:cache
 
 ```ruby
 # Gemfile
-gem "rails", "~> 8.1.0"
+gem "rails", "~> 8.2.0"
 gem "sqlite3", ">= 2.1"
 gem "solid_queue"
 gem "solid_cache"

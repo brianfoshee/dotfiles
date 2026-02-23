@@ -1,6 +1,6 @@
 # Testing Pyramid for Rails Applications
 
-Production-proven testing strategy that prioritizes fast, reliable tests at appropriate levels, based on real Rails 8.1 application with 760+ tests.
+Production-proven testing strategy that prioritizes fast, reliable tests at appropriate levels, based on real Rails 8.2 application with 760+ tests.
 
 ## The Testing Pyramid
 
@@ -396,7 +396,7 @@ bin/rails test:all
 bin/rails test:all
 ```
 
-Or use Rails 8.1+ local CI:
+Or use Rails 8.2+ local CI:
 
 ```bash
 bin/ci
@@ -768,7 +768,7 @@ test "uuid validation"
 
 ## Test Coverage by Level
 
-Based on real Rails 8.1 application (760+ tests):
+Based on real Rails 8.2 application (760+ tests):
 
 | Level | Count | % | Speed | Use Case |
 |-------|-------|---|-------|----------|
@@ -812,7 +812,7 @@ bin/rails test test/controllers
 bin/rails test:system
 ```
 
-### Rails 8.1+ Local CI
+### Rails 8.2+ Local CI
 
 ```bash
 # Run full CI suite locally
@@ -821,13 +821,10 @@ bin/ci
 
 This runs:
 1. Setup and dependency check
-2. RuboCop style checking
-3. Bundler audit (gem vulnerability scanning)
-4. Importmap audit (JavaScript dependency scanning)
-5. Brakeman security analysis
-6. Unit and integration tests
-7. System tests
-8. Database seed verification
+2. Checks group (parallel): RuboCop, bundler audit, importmap audit, Brakeman
+3. Unit and integration tests
+4. System tests
+5. Database seed verification
 
 ## Common Anti-Patterns
 
