@@ -911,7 +911,7 @@ Thruster automatically:
 
 ### Application Security
 
-1. **SSL everywhere**: Strict SSL mode with HSTS. In Rails 8.2, `config.assume_ssl` defaults to `false`; set it to `true` when behind an SSL-terminating proxy.
+1. **SSL everywhere**: Strict SSL mode with HSTS. New Rails 8.2 apps no longer generate `assume_ssl`/`force_ssl` in `production.rb`; set both to `true` when behind an SSL-terminating proxy.
 2. **Secrets management**: Environment variables, never in code
 3. **Security scanning**: Brakeman, bundler-audit, importmap audit in CI
 4. **Regular updates**: Dependabot for dependency updates
