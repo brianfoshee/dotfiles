@@ -1135,12 +1135,13 @@ export default class extends Controller {
 
 ## Pluggable Editor Registry
 
-Rails 8.2 ships a pluggable editor system for ActionText. Editors register via naming convention and implement three methods.
+Rails 8.2 extracts `ActionText::Editor` as a base class, decoupling ActionText from Trix. `ActionText::TrixEditor` is the built-in reference implementation.
 
-### Editor Base Class
+### Editor Interface
+
+Custom editors subclass `ActionText::Editor` and implement two transformation methods:
 
 ```ruby
-# Editors live in ActionText::Editor::<Name>Editor
 class ActionText::Editor::LexxyEditor < ActionText::Editor
   # Convert editor HTML → canonical ActionText storage format
   def as_canonical(editable_fragment)
@@ -1151,27 +1152,8 @@ class ActionText::Editor::LexxyEditor < ActionText::Editor
   def as_editable(canonical_fragment)
     canonical_fragment  # Lexxy uses the same format
   end
-
-  # Render the editor tag in forms
-  def editor_tag(form, method, **options)
-    form.lexxy_rich_text_area(method, **options)
-  end
 end
 ```
-
-### Configuration
-
-```ruby
-# config/application.rb
-config.action_text.editors = {
-  lexxy: {},       # Options passed to editor initializer
-  trix: {}         # TrixEditor is the built-in reference implementation
-}
-
-config.action_text.editor = :trix  # Default editor for rich_textarea
-```
-
-Naming convention: `:lexxy` resolves to `ActionText::Editor::LexxyEditor`.
 
 ### Per-Model Editor Selection
 
@@ -1191,14 +1173,7 @@ Lexxy 0.7.x adds table support. Tables are rendered as standard HTML (`<table>`,
 
 ## Text Highlighting
 
-Lexxy 0.7.x supports text highlighting with 9 color slots exposed as CSS custom properties:
-
-```css
-/* Override in your stylesheet */
---highlight-1: #fef08a;  /* yellow */
---highlight-2: #bbf7d0;  /* green */
-/* ... through --highlight-9 */
-```
+Lexxy 0.7.x supports text highlighting with configurable color slots. Colors are customizable via CSS custom properties in your stylesheet. See the [Lexxy documentation](https://basecamp.github.io/lexxy) for the current property names.
 
 ## Extension System
 

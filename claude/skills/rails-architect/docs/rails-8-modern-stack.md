@@ -242,22 +242,25 @@ config.active_storage.analyze = :immediately
 
 Blobs are analyzed (dimensions, metadata) before validation callbacks run, so `has_one_attached :avatar, content_type: "image/*"` validations work on first save.
 
-### CSRF Header-Only Verification
+### CSRF Protection via Sec-Fetch-Site
+
+Rails 8.2 introduces a new CSRF protection strategy based on the `Sec-Fetch-Site` browser header:
 
 ```ruby
-# config/application.rb
-config.action_controller.csrf_token_storage_strategy = :header
+# config/application.rb (default for new 8.2 apps)
+config.action_controller.csrf_protection_strategy = :header_only
 ```
 
-Allows verifying CSRF tokens from the `X-CSRF-Token` header only, skipping the form `authenticity_token` param. Useful for Turbo/fetch-heavy apps where forms always submit via JavaScript.
+`:header_only` relies on the browser's `Sec-Fetch-Site` header, eliminating the need for `authenticity_token` form params. Use `:header_or_legacy_token` for a gradual migration that falls back to traditional token verification.
 
-### Kamal SSL Default Change
+### SSL Configuration
 
-In 8.2, `config.assume_ssl` defaults to `false` (previously `true` in 8.1). If deploying behind SSL-terminating proxy (Cloudflare, Kamal with SSL), explicitly set:
+New Rails 8.2 apps no longer generate `config.assume_ssl` or `config.force_ssl` in `production.rb`, so Kamal deployments work out of the box without SSL. When deploying behind an SSL-terminating proxy, explicitly enable:
 
 ```ruby
 # config/environments/production.rb
 config.assume_ssl = true
+config.force_ssl = true
 ```
 
 ## Combined Credentials
@@ -275,7 +278,7 @@ Rails.app.creds.require(:aws, :bucket)                      # nested: checks AWS
 ## Deployment Revision Tracking
 
 ```ruby
-Rails.app.revision  # => "abc1234" (from REVISION file or git SHA)
+Rails.app.revision  # => "abc1234" (checks ENV["REVISION"], then REVISION file, then git SHA)
 ```
 
 Useful for cache keys, error reporting, and deployment verification:
