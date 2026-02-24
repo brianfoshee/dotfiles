@@ -637,8 +637,7 @@ export default class extends Controller {
       const response = await fetch("/songs/unfurl", {
         method: "POST",
         headers: {
-          "Content-Type": "application/json",
-          "X-CSRF-Token": this.csrfToken
+          "Content-Type": "application/json"
         },
         body: JSON.stringify({ url })
       })
@@ -650,10 +649,6 @@ export default class extends Controller {
     } catch (error) {
       console.error("Unfurl failed:", error)
     }
-  }
-
-  get csrfToken() {
-    return document.querySelector("[name='csrf-token']").content
   }
 }
 ```
