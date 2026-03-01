@@ -78,7 +78,7 @@ Kamal is a deployment tool from 37signals that deploys containerized application
 ```yaml
 # config/deploy.yml
 service: myapp
-image: ghcr.io/myorg/myapp
+image: myorg/myapp              # Registry server is prepended automatically
 
 servers:
   web:
@@ -114,6 +114,15 @@ volumes:
   - "app_storage:/rails/storage"
 
 accessories:
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    host: app-server
+    network: host             # Top-level key replaces default kamal network
+    cmd: tunnel run
+    env:
+      secret:
+        - TUNNEL_TOKEN
+
   litestream:
     image: litestream/litestream:0.5
     host: app-server
@@ -179,8 +188,9 @@ bin/kamal accessory reboot litestream
 
 ```bash
 # .kamal/secrets (not committed to git)
-KAMAL_REGISTRY_PASSWORD=$GITHUB_TOKEN
-RAILS_MASTER_KEY=$RAILS_MASTER_KEY
+KAMAL_REGISTRY_PASSWORD=$KAMAL_REGISTRY_PASSWORD
+RAILS_MASTER_KEY=$(cat config/master.key)
+TUNNEL_TOKEN=$TUNNEL_TOKEN
 STORAGE_ACCOUNT_NAME=$STORAGE_ACCOUNT_NAME
 STORAGE_ACCOUNT_KEY=$STORAGE_ACCOUNT_KEY
 ```
@@ -444,48 +454,60 @@ Benefits:
 ### Tunnel Configuration (Cloudflare Example)
 
 ```hcl
-# Terraform: Cloudflare Zero Trust Tunnel
+# Terraform: Cloudflare Zero Trust Tunnel (provider v5+)
+resource "random_bytes" "tunnel_secret" {
+  length = 32
+}
+
 resource "cloudflare_zero_trust_tunnel_cloudflared" "app" {
-  account_id = var.cloudflare_account_id
-  name       = "app-tunnel"
-  config_src = "cloudflare"
+  account_id    = var.cloudflare_account_id
+  name          = "app-tunnel"
+  config_src    = "cloudflare"
+  tunnel_secret = random_bytes.tunnel_secret.base64
 }
 
 resource "cloudflare_zero_trust_tunnel_cloudflared_config" "app" {
   account_id = var.cloudflare_account_id
   tunnel_id  = cloudflare_zero_trust_tunnel_cloudflared.app.id
-
-  config {
-    # ACME challenges - HTTP for Let's Encrypt validation
-    ingress_rule {
-      hostname = "app.example.com"
-      path     = "/.well-known/acme-challenge/*"
-      service  = "http://localhost:80"
-    }
-
-    # Regular traffic - HTTPS to app
-    ingress_rule {
-      hostname = "app.example.com"
-      service  = "https://localhost:443"
-      origin_request {
-        origin_server_name = "app.example.com"
-      }
-    }
-
-    # Catch-all
-    ingress_rule {
-      service = "http_status:404"
-    }
+  config = {
+    ingress = [
+      {
+        hostname = "app.example.com"
+        path     = "/.well-known/acme-challenge/*"
+        service  = "http://localhost:80"
+      },
+      {
+        hostname = "app.example.com"
+        service  = "https://localhost:443"
+        origin_request = {
+          origin_server_name = "app.example.com"
+        }
+      },
+      {
+        service = "http_status:404"
+      },
+    ]
   }
 }
 
 # DNS record pointing to tunnel
 resource "cloudflare_dns_record" "app" {
   zone_id = var.cloudflare_zone_id
-  name    = "app"
+  name    = "app.example.com"
   type    = "CNAME"
   content = "${cloudflare_zero_trust_tunnel_cloudflared.app.id}.cfargotunnel.com"
+  ttl     = 1
   proxied = true
+}
+
+# Construct the tunnel token (v5 provider removed the computed attribute)
+output "tunnel_token" {
+  value = base64encode(jsonencode({
+    a = var.cloudflare_account_id
+    t = cloudflare_zero_trust_tunnel_cloudflared.app.id
+    s = random_bytes.tunnel_secret.base64
+  }))
+  sensitive = true
 }
 ```
 
@@ -508,7 +530,9 @@ The tunnel must route ACME paths to HTTP port 80, not HTTPS port 443:
 
 ```hcl
 resource "cloudflare_zero_trust_tunnel_cloudflared_config" "app" {
-  config {
+  account_id = var.cloudflare_account_id
+  tunnel_id  = cloudflare_zero_trust_tunnel_cloudflared.app.id
+  config = {
     ingress = [
       # ACME challenges - MUST route to HTTP (port 80)
       {
@@ -527,7 +551,7 @@ resource "cloudflare_zero_trust_tunnel_cloudflared_config" "app" {
       # Catch-all
       {
         service = "http_status:404"
-      }
+      },
     ]
   }
 }
@@ -541,23 +565,25 @@ With zone-wide `ssl = "strict"`, Cloudflare requires valid SSL on the origin. Cr
 
 ```hcl
 resource "cloudflare_ruleset" "acme_ssl_bypass" {
-  zone_id     = var.cloudflare_zone_id
-  name        = "ACME Challenge SSL Configuration"
-  description = "Set SSL mode to flexible for Let's Encrypt ACME challenges"
-  kind        = "zone"
-  phase       = "http_config_settings"
-
-  rules = [{
-    action = "set_config"
-    action_parameters = {
-      ssl = "flexible"    # Allows HTTP to origin
-    }
-    expression  = "(http.host eq \"app.example.com\" and starts_with(http.request.uri.path, \"/.well-known/acme-challenge/\"))"
-    description = "Downgrade SSL for ACME challenges"
-    enabled     = true
-  }]
+  zone_id = var.cloudflare_zone_id
+  name    = "ACME Challenge SSL Configuration"
+  kind    = "zone"
+  phase   = "http_config_settings"
+  rules = [
+    {
+      action = "set_config"
+      action_parameters = {
+        ssl = "flexible"    # Allows HTTP to origin
+      }
+      expression  = "(http.host eq \"app.example.com\" and starts_with(http.request.uri.path, \"/.well-known/acme-challenge/\"))"
+      description = "Downgrade SSL for ACME challenges"
+      enabled     = true
+    },
+  ]
 }
 ```
+
+**API token permission:** This requires `Zone > Config Rules > Edit` (not Zone WAF).
 
 **Why:** `ssl = "flexible"` allows Cloudflare to connect to the origin via HTTP. This is only applied to ACME paths; all other traffic uses strict SSL.
 
@@ -604,6 +630,31 @@ If Let's Encrypt validation fails:
    ```
 4. **Verify ruleset**: In Cloudflare dashboard, check Rules → Configuration Rules
 5. **Verify worker routes**: In Cloudflare dashboard, check Workers → Routes (ACME route should have no script)
+
+### Cloudflare API Token Permissions
+
+When managing Cloudflare resources via Terraform, the API token needs these permissions:
+
+| Scope   | Permission          | Access | Used for                          |
+|---------|---------------------|--------|-----------------------------------|
+| Zone    | Zone Settings       | Edit   | SSL mode, HTTPS, TLS version     |
+| Zone    | DNS                 | Edit   | Tunnel CNAME record               |
+| Zone    | Config Rules        | Edit   | ACME challenge SSL override       |
+| Account | Cloudflare Tunnel   | Edit   | Tunnel and ingress configuration  |
+| Account | R2 Storage          | Edit   | R2 bucket                         |
+
+### R2 Bucket for Storage
+
+```hcl
+resource "cloudflare_r2_bucket" "uploads" {
+  account_id    = var.cloudflare_account_id
+  name          = "myapp-uploads"
+  location      = "enam"
+  storage_class = "Standard"
+}
+```
+
+R2 is S3-compatible — use the `aws-sdk-s3` gem with Active Storage's S3 service adapter. Set `force_path_style: true` and `region: auto`.
 
 ## CI/CD Pipeline
 
@@ -668,17 +719,17 @@ jobs:
     needs: [scan, lint, test]
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read     # Required for checkout (explicit permissions drop defaults)
+      packages: write    # Required for ghcr.io push
     steps:
       - uses: actions/checkout@v4
       - uses: ruby/setup-ruby@v1
         with:
           bundler-cache: true
-      - run: bin/kamal registry login
-        env:
-          KAMAL_REGISTRY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
       - run: bin/kamal build push
         env:
-          RAILS_MASTER_KEY: ${{ secrets.RAILS_MASTER_KEY }}
+          KAMAL_REGISTRY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
 
   # Deploy via VPN
   deploy:
@@ -721,12 +772,14 @@ jobs:
 
 | Secret | Purpose | Source |
 |--------|---------|--------|
-| `RAILS_MASTER_KEY` | Rails credentials encryption | `config/credentials.key` |
-| `GITHUB_TOKEN` | Container registry auth | Auto-provided by GitHub |
+| `GITHUB_TOKEN` | Container registry auth (build job) | Auto-provided by GitHub |
+| `RAILS_MASTER_KEY` | Rails credentials encryption (deploy job) | `config/credentials.key` |
 | `TAILSCALE_OAUTH_CLIENT_ID` | VPN authentication | Tailscale admin console |
 | `TAILSCALE_OAUTH_CLIENT_SECRET` | VPN authentication | Tailscale admin console |
 | `STORAGE_ACCOUNT_NAME` | Litestream backup destination | Cloud provider |
 | `STORAGE_ACCOUNT_KEY` | Litestream backup auth | Cloud provider |
+
+**Note:** `RAILS_MASTER_KEY` is only needed at deploy/runtime, not for image builds. `GITHUB_TOKEN` is auto-provided and needs `packages: write` permission.
 
 ### Deployment Flow
 
@@ -745,26 +798,29 @@ local:
   service: Disk
   root: <%= Rails.root.join("storage/files") %>
 
-production:
-  service: AzureStorage           # Or S3, GCS
-  storage_account_name: <%= ENV['STORAGE_ACCOUNT_NAME'] %>
-  storage_access_key: <%= ENV['STORAGE_ACCESS_KEY'] %>
-  container: attachments-<%= Rails.env %>
+# Cloudflare R2 (S3-compatible, uses aws-sdk-s3 gem)
+r2:
+  service: S3
+  access_key_id: <%= Rails.application.credentials.dig(:r2, :access_key_id) %>
+  secret_access_key: <%= Rails.application.credentials.dig(:r2, :secret_access_key) %>
+  endpoint: https://<account_id>.r2.cloudflarestorage.com
+  region: auto
+  bucket: myapp-uploads
+  force_path_style: true
 
-# For S3-compatible storage:
+# Azure Blob Storage:
 # production:
-#   service: S3
-#   access_key_id: <%= ENV['AWS_ACCESS_KEY_ID'] %>
-#   secret_access_key: <%= ENV['AWS_SECRET_ACCESS_KEY'] %>
-#   region: us-east-1
-#   bucket: myapp-attachments-<%= Rails.env %>
+#   service: AzureStorage
+#   storage_account_name: <%= ENV['STORAGE_ACCOUNT_NAME'] %>
+#   storage_access_key: <%= ENV['STORAGE_ACCESS_KEY'] %>
+#   container: attachments-<%= Rails.env %>
 ```
 
 ### Environment Configuration
 
 ```ruby
 # config/environments/production.rb
-config.active_storage.service = :production
+config.active_storage.service = :r2
 ```
 
 ### CORS Configuration
@@ -911,7 +967,7 @@ Thruster automatically:
 
 ### Application Security
 
-1. **SSL everywhere**: Strict SSL mode with HSTS. New Rails 8.2 apps no longer generate `assume_ssl`/`force_ssl` in `production.rb`; set both to `true` when behind an SSL-terminating proxy.
+1. **SSL everywhere**: Strict SSL mode with HSTS. Enable both `config.assume_ssl = true` and `config.force_ssl = true` in production when behind an SSL-terminating proxy (Cloudflare + kamal-proxy). `assume_ssl` marks requests as HTTPS before `force_ssl` checks, preventing redirect loops.
 2. **Secrets management**: Environment variables, never in code
 3. **Security scanning**: Brakeman, bundler-audit, importmap audit in CI
 4. **Regular updates**: Dependabot for dependency updates
