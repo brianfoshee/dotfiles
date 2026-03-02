@@ -207,7 +207,61 @@ Litestream continuously replicates SQLite databases to cloud storage (S3, Azure 
 - **Zero downtime** - No application changes needed
 - **Low cost** - Uses cheap object storage
 
-### Configuration
+### Configuration: Cloudflare R2
+
+R2 is S3-compatible, so Litestream uses the `s3` replica type. YAML anchors (`&r2_replica` / `<<: *r2_replica`) avoid repeating the replica block for each database. Litestream does `$VAR` interpolation after YAML parsing, so anchors and env vars work together.
+
+```yaml
+# config/litestream.yml
+dbs:
+  - path: /rails/storage/production.sqlite3
+    replicas:
+      - &r2_replica
+        type: s3
+        bucket: $LITESTREAM_REPLICA_BUCKET
+        endpoint: $LITESTREAM_REPLICA_ENDPOINT
+        region: auto
+        access-key-id: $LITESTREAM_ACCESS_KEY_ID
+        secret-access-key: $LITESTREAM_SECRET_ACCESS_KEY
+        path: production.sqlite3
+        sync-interval: 60s
+
+  - path: /rails/storage/production_cache.sqlite3
+    replicas:
+      - <<: *r2_replica
+        path: production_cache.sqlite3
+        sync-interval: 300s
+
+  - path: /rails/storage/production_queue.sqlite3
+    replicas:
+      - <<: *r2_replica
+        path: production_queue.sqlite3
+        sync-interval: 300s
+
+  - path: /rails/storage/production_cable.sqlite3
+    replicas:
+      - <<: *r2_replica
+        path: production_cable.sqlite3
+        sync-interval: 300s
+```
+
+Environment variables:
+- `LITESTREAM_ACCESS_KEY_ID` / `LITESTREAM_SECRET_ACCESS_KEY` — R2 API token scoped to the backup bucket
+- `LITESTREAM_REPLICA_BUCKET` — bucket name (e.g. `myapp-backups`)
+- `LITESTREAM_REPLICA_ENDPOINT` — `https://<cf-account-id>.r2.cloudflarestorage.com`
+
+Terraform for the R2 bucket:
+
+```hcl
+resource "cloudflare_r2_bucket" "backups" {
+  account_id    = var.cloudflare_account_id
+  name          = "myapp-backups"
+  location      = "enam"
+  storage_class = "Standard"
+}
+```
+
+### Configuration: Azure Blob Storage
 
 ```yaml
 # config/litestream.yml
@@ -218,7 +272,7 @@ dbs:
   # Primary database - most important, longest retention
   - path: /rails/storage/production.sqlite3
     replicas:
-      - type: abs                        # Azure Blob Storage (or s3, gcs)
+      - type: abs                        # Azure Blob Storage
         bucket: db-backups-production
         endpoint: https://mystorageaccount.blob.core.windows.net
         sync-interval: 1s                # Near real-time replication
@@ -263,6 +317,24 @@ dbs:
 
 ### Recovery Commands
 
+**Cloudflare R2:**
+```bash
+# Restore to latest state
+litestream restore -o /rails/storage/production.sqlite3 \
+  s3://myapp-backups/production.sqlite3
+
+# Restore to specific point in time
+litestream restore -o /rails/storage/production.sqlite3 \
+  -timestamp "2024-01-15T10:30:00Z" \
+  s3://myapp-backups/production.sqlite3
+
+# List available snapshots
+litestream snapshots s3://myapp-backups/production.sqlite3
+```
+
+R2 restore commands require the same `LITESTREAM_*` env vars to be set.
+
+**Azure Blob Storage:**
 ```bash
 # Restore to latest state
 litestream restore -o /rails/storage/production.sqlite3 \
@@ -294,8 +366,22 @@ accessories:
       - "app_storage:/rails/storage"    # Same volume as Rails app
     env:
       secret:
-        - STORAGE_ACCOUNT_NAME
-        - STORAGE_ACCOUNT_KEY
+        # For R2:
+        - LITESTREAM_ACCESS_KEY_ID
+        - LITESTREAM_SECRET_ACCESS_KEY
+        - LITESTREAM_REPLICA_BUCKET
+        - LITESTREAM_REPLICA_ENDPOINT
+        # For Azure:
+        # - STORAGE_ACCOUNT_NAME
+        # - STORAGE_ACCOUNT_KEY
+```
+
+`kamal deploy` does not start accessories. Boot it separately:
+
+```bash
+kamal accessory boot litestream        # First time
+kamal accessory reboot litestream      # After config changes
+kamal accessory logs litestream -f     # Tail logs
 ```
 
 ## Cloud-Init: VM Provisioning
