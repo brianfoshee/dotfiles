@@ -59,6 +59,18 @@ When asked to do something, just do it - including obvious follow-up actions nee
 - YOU MUST NOT manually change whitespace that does not affect execution or output. Otherwise, use a formatting tool.
 - Fix broken things immediately when you find them. Don't ask permission to fix bugs.
 
+## Secrets and Credentials
+
+- YOU MUST NEVER read, open, or cat files that contain secrets or credentials. This includes but is not limited to:
+  - `.env`, `env`, `.env.*` (e.g., `.env.local`, `.env.production`)
+  - `.tfvars`, `*.tfvars`, `terraform.tfvars`
+  - `credentials.yml.enc`, `master.key`, `config/credentials/`
+  - Files containing API keys, tokens, passwords, or connection strings
+- YOU MUST NEVER run `bin/rails credentials:edit` or `bin/rails credentials:show`
+- YOU MUST NEVER run `EDITOR=cat bin/rails credentials:edit` or any variant that would display credentials
+- If you need to know what keys exist in Rails credentials, ASK Brian - don't try to read them yourself
+- If a task requires knowing a secret value, STOP and ask Brian to provide it directly
+
 ## Naming
 
 - Names MUST tell what code does, not how it's implemented or its history
