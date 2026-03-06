@@ -6,6 +6,10 @@ Production-ready passkey authentication implementation pattern based on real-wor
 
 This guide shows how to implement passkey-only authentication in Rails applications using WebAuthn, without passwords or traditional authentication systems.
 
+**Rails 8 context:**
+- Rails 8 ships with `bin/rails generate authentication` which provides email/password auth only (no WebAuthn)
+- This doc covers implementing passkey auth manually with the `webauthn-ruby` gem
+
 ## Key Architectural Decisions
 
 1. **Admin-Controlled Provisioning** - Users receive passkey setup links from admins (no self-service registration)
@@ -188,60 +192,6 @@ This guide shows how to implement passkey-only authentication in Rails applicati
 2. Passkey provides **ongoing phishing-resistant authentication** (FIDO2)
 3. Email is only attack surface during **initial 30-minute setup window**
 4. After setup, email compromise doesn't affect account security
-
-### Industry Standards & Adoption
-
-**NIST SP 800-63-4 (2025):**
-- Mandates phishing-resistant MFA for AAL2 and AAL3
-- Explicitly endorses FIDO2/WebAuthn passkeys
-- Deprecates SMS-based authentication
-- Recognizes synced passkeys as AAL2, device-bound as AAL3
-
-**FIDO Alliance (2024-2025):**
-- Passkey adoption doubled in 2024
-- Over 15 billion online accounts support passkeys
-- Hundreds of millions of new passkey users expected in 2025
-- Large and growing proportion of world's most visited websites support passkeys
-
-**Government mandates:**
-- OMB M-22-09 requires phishing-resistant MFA for federal agencies
-- Executive Order 14028 emphasizes passwordless authentication
-- Cybersecurity agencies worldwide recommending FIDO2/WebAuthn
-
-### Real-World Security Impact
-
-**With traditional passwords + 2FA:**
-- Users must remember passwords (leading to weak/reused passwords)
-- 2FA codes can be phished in real-time attacks
-- Account recovery often bypasses 2FA entirely
-- Dark web markets sell billions of credentials
-- Average cost of data breach: $4.45M (2024)
-
-**With magic links + passkeys:**
-- No passwords to remember, guess, or steal
-- Phishing sites cannot capture authentication
-- No credentials to sell on dark web
-- Device-bound security (physical possession required)
-- Biometric verification prevents unauthorized device use
-
-### Bottom Line
-
-**Magic links + passkeys provide:**
-1. ✅ **Phishing-resistant** - Cryptographically bound to domain (FIDO2)
-2. ✅ **No shared secrets** - Private keys never transmitted
-3. ✅ **Multi-factor by default** - Device + biometric
-4. ✅ **No password vulnerabilities** - Immune to all password attacks
-5. ✅ **NIST compliant** - Meets 2025 AAL2/AAL3 requirements
-6. ✅ **Industry standard** - Adopted by billions of accounts worldwide
-
-**Traditional authentication (passwords + SMS/Email/TOTP):**
-- ❌ Phishable, replayable, interceptable
-- ❌ Relies on user-chosen secrets
-- ❌ Vulnerable to social engineering
-- ❌ Database breaches expose credentials
-- ❌ Does not meet 2025 security standards
-
-**The security gap is not incremental - it's categorical. Passkeys eliminate entire classes of attacks that plague traditional authentication.**
 
 ## Data Model
 
@@ -896,10 +846,10 @@ export default class extends Controller {
 ```ruby
 # config/initializers/webauthn.rb
 WebAuthn.configure do |config|
-  config.origin = if Rails.env.production?
-    ENV.fetch('WEBAUTHN_ORIGIN')  # e.g., "https://intaqt.example.com"
+  config.allowed_origins = if Rails.env.production?
+    [ ENV.fetch('WEBAUTHN_ORIGIN') ]  # e.g., ["https://intaqt.example.com"]
   else
-    'http://localhost:3000'
+    [ 'http://localhost:3000' ]
   end
 
   config.rp_name = ENV.fetch('WEBAUTHN_RP_NAME', 'Your App Name')
@@ -911,13 +861,13 @@ WebAuthn.configure do |config|
   end
 
   config.credential_options_timeout = 60_000  # 60 seconds
-  config.encoding = :base64
+  config.encoding = :base64url
   config.algorithms = ['ES256', 'RS256']
 end
 ```
 
 **Configuration notes:**
-- `origin` must match the URL exactly (including protocol and port)
+- `allowed_origins` accepts an array of origin strings (protocol + host + port)
 - `rp_id` is the domain without protocol/port
 - Environment-specific configuration for development/staging/production
 
@@ -1146,7 +1096,7 @@ end
 
 ```ruby
 # Gemfile
-gem 'webauthn'
+gem 'webauthn', '~> 3.4'
 gem 'fido_metadata'  # Optional, for device metadata
 ```
 
@@ -1303,13 +1253,13 @@ end
 **config/initializers/webauthn.rb:**
 ```ruby
 WebAuthn.configure do |config|
-  # Origin and RP ID configuration
-  config.origin = if Rails.env.test?
-    "http://localhost:3000"  # Not used by Capybara (uses random ports)
+  # Allowed origins (webauthn-ruby 3.4.0+)
+  config.allowed_origins = if Rails.env.test?
+    TestOriginChecker.new  # Handles Capybara's random ports
   elsif Rails.env.production?
-    ENV.fetch('WEBAUTHN_ORIGIN')
+    [ ENV.fetch('WEBAUTHN_ORIGIN') ]
   else
-    'http://localhost:3000'
+    [ 'http://localhost:3000' ]
   end
 
   config.rp_id = if Rails.env.test?
@@ -1322,13 +1272,6 @@ WebAuthn.configure do |config|
 
   # CRITICAL: Use base64url encoding for native browser APIs
   config.encoding = :base64url  # NOT :base64
-
-  # Allowed origins configuration
-  config.allowed_origins = if Rails.env.test?
-    TestOriginChecker.new  # Handles Capybara's random ports
-  else
-    [ config.origin ]
-  end
 
   config.credential_options_timeout = 60_000
   config.algorithms = ['ES256', 'RS256']
@@ -1677,17 +1620,6 @@ Capybara.server_host = "localhost"  # NOT "127.0.0.1"
 
 **Solution:** See "Credential ID Storage" section above.
 
-### Browser Compatibility
-
-| Browser | Virtual Authenticator | Notes |
-|---------|----------------------|-------|
-| Chrome | ✅ Full support | 75+, recommended for tests |
-| Edge | ✅ Full support | 79+ (Chromium-based) |
-| Firefox | ❌ Limited | WebDriver BiDi required |
-| Safari | ❌ Not supported | No virtual authenticator API |
-
-**For Rails tests:** Use Chrome (default in system tests), works in headless mode for CI/CD.
-
 ### Complete Test Example
 
 ```ruby
@@ -1776,12 +1708,6 @@ await fetch('/webauthn/registration/complete', {
 })
 ```
 
-**Browser support:**
-- Chrome 108+
-- Safari 16.1+
-- Firefox 122+
-- Edge 108+
-
 **Benefits:**
 - ✅ No polyfills or helper libraries needed
 - ✅ Handles all ArrayBuffer ↔ base64url conversion
@@ -1864,14 +1790,89 @@ if (available) {
 - ✅ No extra "Sign in with passkey" button needed
 - ✅ Works alongside email/password if hybrid auth
 
-**Browser support:**
-- Chrome 108+
-- Safari 16.4+
-- Edge 108+
+### Signal API (Credential Lifecycle Management)
+
+The WebAuthn Signal API allows servers to notify authenticators about credential state changes, keeping passkey lists in sync across devices.
+
+**After deleting a credential server-side:**
+```javascript
+// Notify authenticator to remove the credential
+PublicKeyCredential.signalUnknownCredential({
+  rpId: "example.com",
+  credentialId: deletedCredentialId
+})
+```
+
+**After user updates their profile:**
+```javascript
+// Sync display name/email with authenticator
+PublicKeyCredential.signalCurrentUserDetails({
+  rpId: "example.com",
+  userId: user.id,
+  name: user.email,
+  displayName: user.name
+})
+```
+
+**Sync full credential list (e.g., on settings page load):**
+```javascript
+// Authenticator removes any credentials not in the list
+PublicKeyCredential.signalAllAcceptedCredentials({
+  rpId: "example.com",
+  userId: user.id,
+  allAcceptedCredentialIds: validCredentialIds
+})
+```
+
+**Server-side integration:**
+
+```ruby
+# app/controllers/credentials_controller.rb
+class CredentialsController < ApplicationController
+  def destroy
+    @credential = Current.user.credentials.find(params[:id])
+    @credential.destroy
+
+    # Client-side: call signalUnknownCredential after redirect
+    # Pass deleted credential ID to JavaScript via flash or data attribute
+    redirect_to credentials_path,
+      notice: "Passkey removed",
+      flash: { deleted_credential_id: @credential.external_id }
+  end
+end
+```
+
+```javascript
+// In Stimulus controller, after credential deletion
+if (PublicKeyCredential.signalUnknownCredential) {
+  await PublicKeyCredential.signalUnknownCredential({
+    rpId: this.rpIdValue,
+    credentialId: this.deletedCredentialIdValue
+  })
+}
+```
+
+### Related Origin Requests
+
+Allows sharing passkeys across related domains (e.g., `example.com` and `example.co.uk`) by publishing a `.well-known/webauthn` file.
+
+**Set up on the RP ID domain (e.g., `example.com`):**
+```json
+// https://example.com/.well-known/webauthn
+{
+  "origins": [
+    "https://example.co.uk",
+    "https://example.de",
+    "https://app.example.com"
+  ]
+}
+```
+
+The file must be served from the `rp_id` domain. Each listed origin can use passkeys registered with that RP ID. The RP ID domain itself does not need to be listed.
 
 ## References
 
-- [W3C WebAuthn Specification](https://www.w3.org/TR/webauthn-3/)
+- [W3C WebAuthn Level 3 Specification (Candidate Recommendation)](https://www.w3.org/TR/webauthn-3/)
 - [webauthn-ruby gem](https://github.com/cedarcode/webauthn-ruby)
 - [FIDO Alliance](https://fidoalliance.org/passkeys/)
 - [Selenium Virtual Authenticator](https://www.selenium.dev/documentation/webdriver/interactions/virtual_authenticator/)
