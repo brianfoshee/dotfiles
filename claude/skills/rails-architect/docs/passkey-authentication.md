@@ -9,7 +9,6 @@ This guide shows how to implement passkey-only authentication in Rails applicati
 **Rails 8 context:**
 - Rails 8 ships with `bin/rails generate authentication` which provides email/password auth only (no WebAuthn)
 - This doc covers implementing passkey auth manually with the `webauthn-ruby` gem
-- For a turnkey solution that builds on the Rails 8 auth generator, see the `webauthn-rails` gem by Cedarcode (v0.1.x, uses polyfill library rather than native browser APIs)
 
 ## Key Architectural Decisions
 
