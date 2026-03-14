@@ -176,6 +176,16 @@ When Brian asks you to build a UI:
 4. **Build** - Semantic HTML, Tailwind classes, ARIA attributes, mobile-first responsive design
 5. **Test** - Preview in browser, verify responsiveness, check accessibility and keyboard navigation
 
+## Brand / Social Media Icons
+
+Tailwind Plus footer components use **Simple Icons** (https://simpleicons.org) for brand SVGs. Heroicons does NOT include brand logos.
+
+- 3,400+ brand icons, all `viewBox="0 0 24 24"` with single `<path>` elements
+- GitHub repo: https://github.com/simple-icons/simple-icons
+- Raw SVG files: `https://raw.githubusercontent.com/simple-icons/simple-icons/develop/icons/{slug}.svg`
+- To use inline: extract the `<path d="..."/>` and wrap in `<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" class="size-6">`
+- Common slugs: `github`, `youtube`, `instagram`, `applemusic`, `spotify`, `soundcloud`, `bandcamp`, `x`, `facebook`, `linkedin`, `tiktok`, `mastodon`
+
 ## Reference Documentation
 
 ### Local
