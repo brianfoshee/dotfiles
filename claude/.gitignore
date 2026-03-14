@@ -19,3 +19,5 @@ paste-cache/
 tasks/
 tailwind_all_components.json
 tailwind_all_components.old.json
+image-cache/
+sessions
