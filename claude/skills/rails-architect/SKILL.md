@@ -194,7 +194,7 @@ This skill includes production-proven patterns extracted from real Rails 8.2 app
 **When to read**: Rails 8 features, eliminating Redis, SQLite in production, zero-build approach.
 
 ### Production Infrastructure
-**`docs/production-infrastructure.md`** - Kamal deployment, Cloudflare Tunnel (Zero Trust), Terraform for Cloudflare (tunnel, DNS, R2, SSL rulesets), Litestream replication, cloud-init, CI/CD, ActiveStorage with R2, Dockerfiles.
+**`docs/production-infrastructure.md`** - Kamal deployment, Cloudflare Tunnel (Zero Trust), ACME/Let's Encrypt passthrough, R2 storage, Litestream replication, cloud-init, CI/CD, ActiveStorage with R2, Dockerfiles.
 **When to read**: Deployment, Kamal, Cloudflare, Terraform, R2, SQLite backups, CI/CD pipelines, secure deployment, VM provisioning.
 
 ## Using Reference Docs

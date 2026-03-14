@@ -540,16 +540,10 @@ Benefits:
 ### Tunnel Configuration (Cloudflare Example)
 
 ```hcl
-# Terraform: Cloudflare Zero Trust Tunnel (provider v5+)
-resource "random_bytes" "tunnel_secret" {
-  length = 32
-}
-
 resource "cloudflare_zero_trust_tunnel_cloudflared" "app" {
-  account_id    = var.cloudflare_account_id
-  name          = "app-tunnel"
-  config_src    = "cloudflare"
-  tunnel_secret = random_bytes.tunnel_secret.base64
+  account_id = var.cloudflare_account_id
+  name       = "app-tunnel"
+  config_src = "cloudflare"
 }
 
 resource "cloudflare_zero_trust_tunnel_cloudflared_config" "app" {
@@ -586,68 +580,29 @@ resource "cloudflare_dns_record" "app" {
   proxied = true
 }
 
-# Construct the tunnel token (v5 provider removed the computed attribute)
+# Retrieve the tunnel token for the cloudflared daemon
+data "cloudflare_zero_trust_tunnel_cloudflared_token" "app" {
+  account_id = var.cloudflare_account_id
+  tunnel_id  = cloudflare_zero_trust_tunnel_cloudflared.app.id
+}
+
 output "tunnel_token" {
-  value = base64encode(jsonencode({
-    a = var.cloudflare_account_id
-    t = cloudflare_zero_trust_tunnel_cloudflared.app.id
-    s = random_bytes.tunnel_secret.base64
-  }))
+  value     = data.cloudflare_zero_trust_tunnel_cloudflared_token.app.token
   sensitive = true
 }
 ```
 
 ### ACME/Let's Encrypt Passthrough
 
-For automatic SSL certificates, Let's Encrypt validates domain ownership via HTTP-01 challenges. With a Zero Trust tunnel and strict SSL mode, this requires **three coordinated configurations**:
+With a Zero Trust tunnel + strict SSL + Workers, Let's Encrypt HTTP-01 challenges require **three coordinated layers**:
 
-#### The Problem
+| Layer | Resource | Setting | Purpose |
+|-------|----------|---------|---------|
+| **Tunnel** | `cloudflare_zero_trust_tunnel_cloudflared_config` | `service = "http://localhost:80"` for ACME path | Route to HTTP port |
+| **Ruleset** | `cloudflare_ruleset` (phase: `http_config_settings`) | `ssl = "flexible"` for ACME path | Allow HTTP-to-origin |
+| **Worker** | `cloudflare_workers_route` | No script for ACME path | Bypass worker |
 
-Let's Encrypt sends an HTTP request to `/.well-known/acme-challenge/<token>` expecting a specific response. With Cloudflare in front:
-1. **Strict SSL** rejects HTTP-to-origin connections
-2. **Tunnel** might route to HTTPS instead of HTTP
-3. **Workers** might intercept and break the flow
-
-All three layers must allow the ACME challenge through.
-
-#### Layer 1: Tunnel Ingress (Route to HTTP)
-
-The tunnel must route ACME paths to HTTP port 80, not HTTPS port 443:
-
-```hcl
-resource "cloudflare_zero_trust_tunnel_cloudflared_config" "app" {
-  account_id = var.cloudflare_account_id
-  tunnel_id  = cloudflare_zero_trust_tunnel_cloudflared.app.id
-  config = {
-    ingress = [
-      # ACME challenges - MUST route to HTTP (port 80)
-      {
-        hostname = "app.example.com"
-        path     = "/.well-known/acme-challenge/*"
-        service  = "http://localhost:80"    # HTTP, not HTTPS
-      },
-      # Regular traffic - HTTPS to kamal-proxy
-      {
-        hostname = "app.example.com"
-        service  = "https://localhost:443"
-        origin_request = {
-          origin_server_name = "app.example.com"
-        }
-      },
-      # Catch-all
-      {
-        service = "http_status:404"
-      },
-    ]
-  }
-}
-```
-
-**Why:** Let's Encrypt validation happens over HTTP. Kamal-proxy listens on port 80 for ACME challenges and port 443 for HTTPS traffic.
-
-#### Layer 2: Configuration Rule (Downgrade SSL)
-
-With zone-wide `ssl = "strict"`, Cloudflare requires valid SSL on the origin. Create a ruleset to downgrade SSL for ACME paths only:
+**Layer 2 — SSL ruleset:**
 
 ```hcl
 resource "cloudflare_ruleset" "acme_ssl_bypass" {
@@ -659,7 +614,7 @@ resource "cloudflare_ruleset" "acme_ssl_bypass" {
     {
       action = "set_config"
       action_parameters = {
-        ssl = "flexible"    # Allows HTTP to origin
+        ssl = "flexible"
       }
       expression  = "(http.host eq \"app.example.com\" and starts_with(http.request.uri.path, \"/.well-known/acme-challenge/\"))"
       description = "Downgrade SSL for ACME challenges"
@@ -669,23 +624,10 @@ resource "cloudflare_ruleset" "acme_ssl_bypass" {
 }
 ```
 
-**API token permission:** This requires `Zone > Config Rules > Edit` (not Zone WAF).
-
-**Why:** `ssl = "flexible"` allows Cloudflare to connect to the origin via HTTP. This is only applied to ACME paths; all other traffic uses strict SSL.
-
-#### Layer 3: Worker Bypass (If Using Workers)
-
-If you have a Cloudflare Worker intercepting traffic (e.g., for authentication, caching, or routing), you must bypass it for ACME challenges:
+**Layer 3 — Worker bypass:**
 
 ```hcl
-# Main worker route - catches all app traffic
-resource "cloudflare_workers_route" "app_proxy" {
-  zone_id = var.cloudflare_zone_id
-  pattern = "app.example.com/*"
-  script  = cloudflare_worker.app_proxy.name
-}
-
-# ACME bypass - more specific pattern, no script = bypass worker
+# ACME bypass — more specific pattern, no script = bypass Worker
 resource "cloudflare_workers_route" "acme_bypass" {
   zone_id = var.cloudflare_zone_id
   pattern = "app.example.com/.well-known/acme-challenge/*"
@@ -693,50 +635,12 @@ resource "cloudflare_workers_route" "acme_bypass" {
 }
 ```
 
-**Why:** Worker routes are matched by specificity. The more specific ACME route (with no script) takes precedence, allowing the request to pass directly through the tunnel to the origin.
-
-#### Complete Configuration Summary
-
-| Layer | Resource | Setting | Purpose |
-|-------|----------|---------|---------|
-| **Tunnel** | `cloudflare_zero_trust_tunnel_cloudflared_config` | `service = "http://localhost:80"` for ACME path | Route to HTTP port |
-| **Ruleset** | `cloudflare_ruleset` (phase: `http_config_settings`) | `ssl = "flexible"` for ACME path | Allow HTTP-to-origin |
-| **Worker** | `cloudflare_workers_route` | No script for ACME path | Bypass worker |
-
-#### Troubleshooting ACME Failures
-
-If Let's Encrypt validation fails:
-
-1. **Check tunnel logs**: `cloudflared tunnel log` - Is the request reaching the tunnel?
-2. **Check kamal-proxy logs**: `bin/kamal proxy logs` - Is the request reaching port 80?
-3. **Test manually**:
-   ```bash
-   # From outside, this should return the challenge token
-   curl -v http://app.example.com/.well-known/acme-challenge/test
-   ```
-4. **Verify ruleset**: In Cloudflare dashboard, check Rules → Configuration Rules
-5. **Verify worker routes**: In Cloudflare dashboard, check Workers → Routes (ACME route should have no script)
-
-### Cloudflare API Token Permissions
-
-When managing Cloudflare resources via Terraform, the API token needs these permissions:
-
-| Scope   | Permission          | Access | Used for                          |
-|---------|---------------------|--------|-----------------------------------|
-| Zone    | Zone Settings       | Edit   | SSL mode, HTTPS, TLS version     |
-| Zone    | DNS                 | Edit   | Tunnel CNAME record               |
-| Zone    | Config Rules        | Edit   | ACME challenge SSL override       |
-| Account | Cloudflare Tunnel   | Edit   | Tunnel and ingress configuration  |
-| Account | R2 Storage          | Edit   | R2 bucket                         |
-
 ### R2 Bucket for Storage
 
 ```hcl
 resource "cloudflare_r2_bucket" "uploads" {
-  account_id    = var.cloudflare_account_id
-  name          = "myapp-uploads"
-  location      = "enam"
-  storage_class = "Standard"
+  account_id = var.cloudflare_account_id
+  name       = "myapp-uploads"
 }
 ```
 
