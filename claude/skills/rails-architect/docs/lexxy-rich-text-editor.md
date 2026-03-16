@@ -11,9 +11,13 @@ Production-proven pattern for using Lexxy instead of Trix as the rich text edito
 - Built-in autocomplete prompt system for mentions, tags, slash commands
 - Code block syntax highlighting
 - More extensible architecture (Lexical extensions)
-- Modern JavaScript (web components)
+- Modern JavaScript (form-associated web component with native validation)
 - Proper HTML semantics (real `<p>` tags, not `<div>`)
-- Markdown support with auto-formatting
+- Markdown support with auto-formatting on paste
+- Tables (insert, edit rows/columns, headers)
+- Text highlighting (9 text colors + 9 background colors)
+- Image galleries (consecutive images grouped automatically)
+- Trix content backward compatibility (imports existing Trix HTML)
 
 ## Setup
 
@@ -21,7 +25,7 @@ Production-proven pattern for using Lexxy instead of Trix as the rich text edito
 
 ```ruby
 # Gemfile
-gem "lexxy", "~> 0.7.4.beta"
+gem "lexxy", "~> 0.8.0.beta"
 ```
 
 ### JavaScript Import
@@ -66,6 +70,29 @@ config.lexxy.override_action_text_defaults = false
 ```
 
 Then use explicitly: `form.lexxy_rich_text_area :content`
+
+### Editor Attributes
+
+`<lexxy-editor>` is a form-associated custom element. Key HTML attributes:
+
+| Attribute | Description |
+|-----------|-------------|
+| `preset` | Named configuration preset (default: `"default"`) |
+| `placeholder` | Placeholder text |
+| `single-line` | Single-line mode (suppresses Enter) |
+| `autofocus` | Auto-focus on mount |
+| `required` | Native form validation |
+| `rows` | Editor height in line-height units (default: `8`) |
+| `name` | Form field name |
+| `value` | Initial HTML content |
+
+```erb
+<%= form.rich_textarea :title,
+      "single-line": true,
+      placeholder: "Card title",
+      required: true,
+      rows: 2 %>
+```
 
 ## Model Usage
 
@@ -461,7 +488,11 @@ Lexxy dispatches custom DOM events that bubble up through the DOM. Stimulus cont
 | `lexxy:focus` | Editor gained focus |
 | `lexxy:blur` | Editor lost focus |
 | `lexxy:file-accept` | File dropped/inserted (call `preventDefault()` to cancel) |
+| `lexxy:upload-start` | Upload began |
+| `lexxy:upload-progress` | Upload progress update |
+| `lexxy:upload-end` | Upload completed |
 | `lexxy:insert-link` | Plain text link pasted |
+| `lexxy:insert-markdown` | Markdown content pasted |
 
 ### Production Examples
 
@@ -713,7 +744,17 @@ Lexxy.configure({
     attachments: true,
     markdown: true,
     multiLine: true,
-    richText: true
+    richText: true,
+    highlight: {
+      buttons: {
+        color: [1, 2, 3, 4, 5, 6, 7, 8, 9].map(n => `var(--highlight-${n})`),
+        "background-color": [1, 2, 3, 4, 5, 6, 7, 8, 9].map(n => `var(--highlight-bg-${n})`)
+      },
+      permit: {
+        color: [],              // additional colors allowed on paste
+        "background-color": []  // additional bg colors allowed on paste
+      }
+    }
   },
 
   // Custom presets
@@ -1164,35 +1205,101 @@ end
 
 ## Tables
 
-Lexxy 0.7.x adds table support. Tables are rendered as standard HTML (`<table>`, `<tr>`, `<td>`) and stored in ActionText content. Add `table`, `tbody`, `tr`, `th`, `td` to your sanitizer's allowed tags (Lexxy's engine does this automatically).
+Tables are rendered as standard HTML (`<table>`, `<tr>`, `<td>`) and stored in ActionText content. The toolbar inserts a 3x3 table with header row. Users can add/remove rows and columns, toggle header cells, and select cells. Add `table`, `tbody`, `tr`, `th`, `td` to your sanitizer's allowed tags (Lexxy's engine does this automatically).
+
+## Image Galleries
+
+Consecutive image attachments are automatically grouped into galleries. Gallery images use the `presentation="gallery"` attribute in the canonical HTML.
 
 ## Text Highlighting
 
-Lexxy 0.7.x supports text highlighting with configurable color slots. Colors are customizable via CSS custom properties in your stylesheet. See the [Lexxy documentation](https://basecamp.github.io/lexxy) for the current property names.
+Text highlighting supports 9 text colors and 9 background colors, configurable via CSS custom properties:
+
+```css
+/* Text colors: --highlight-1 through --highlight-9 */
+--highlight-1: rgb(136, 118, 38);   /* yellow */
+--highlight-2: rgb(185, 94, 6);     /* orange */
+--highlight-3: rgb(207, 0, 0);      /* red */
+--highlight-4: rgb(216, 28, 170);   /* pink */
+--highlight-5: rgb(144, 19, 254);   /* purple */
+--highlight-6: rgb(5, 98, 185);     /* blue */
+--highlight-7: rgb(17, 138, 15);    /* green */
+--highlight-8: rgb(148, 82, 22);    /* brown */
+--highlight-9: rgb(102, 102, 102);  /* gray */
+
+/* Background colors: --highlight-bg-1 through --highlight-bg-9 */
+--highlight-bg-1: rgba(229, 223, 6, 0.3);   /* yellow */
+--highlight-bg-2: rgba(255, 185, 87, 0.3);  /* orange */
+/* ... same pattern through --highlight-bg-9 */
+```
+
+Override these in your stylesheet to change the available highlight palette. The toolbar buttons and permitted-on-paste colors are configured separately in the JS preset (see JavaScript Configuration above).
+
+## CSS Custom Properties
+
+Lexxy exposes all styling through CSS custom properties on `:root`. Key groups:
+
+| Group | Properties |
+|-------|-----------|
+| **Ink** | `--lexxy-color-ink`, `-medium`, `-light`, `-lighter`, `-lightest`, `-inverted` |
+| **Accent** | `--lexxy-color-accent-dark`, `-medium`, `-light`, `-lightest` |
+| **Named** | `--lexxy-color-red`, `-green`, `-blue`, `-purple` |
+| **Semantic** | `--lexxy-color-canvas`, `-text`, `-text-subtle`, `-link`, `-selected`, `-code-bg` |
+| **Code tokens** | `--lexxy-color-code-token-att`, `-comment`, `-function`, `-operator`, `-property`, `-punctuation`, `-selector`, `-variable` |
+| **Tables** | `--lexxy-color-table-header-bg`, `-cell-border`, `-cell-selected`, `-cell-selected-border`, `-cell-add`, `-cell-toggle`, `-cell-remove` |
+| **Typography** | `--lexxy-font-base` (system-ui), `--lexxy-font-mono` (ui-monospace), `--lexxy-text-small`, `--lexxy-content-margin` |
+| **Editor** | `--lexxy-editor-padding`, `--lexxy-editor-rows`, `--lexxy-toolbar-gap`, `--lexxy-toolbar-spacing` |
+| **Misc** | `--lexxy-radius`, `--lexxy-shadow`, `--lexxy-z-popup`, `--lexxy-focus-ring-color`, `--lexxy-toolbar-button-size` |
 
 ## Extension System
 
-Lexxy 0.7.x introduces an experimental extension API for adding custom editor behavior:
+Extensions add custom editor behavior. Subclass `Extension` (exported as `LexxyExtension` internally):
 
 ```javascript
 import { Extension } from "lexxy"
 
 class MyExtension extends Extension {
-  // Extension lifecycle and node/mark registration
+  // Return false to disable based on editor config
+  get enabled() {
+    return true
+  }
+
+  // Return a Lexical extension (nodes, plugins, etc.)
+  get lexicalExtension() {
+    return null
+  }
+
+  // Add custom toolbar buttons
+  initializeToolbar(lexxyToolbar) {
+  }
 }
 
 Lexxy.configure({
   global: {
-    extensions: [new MyExtension()]
+    extensions: [MyExtension]  // pass the class, not an instance
   }
 })
 ```
 
-The extension API is experimental and may change between beta releases.
+Built-in extensions (registered automatically based on config):
+- `AttachmentsExtension` — file/image upload and attachment handling
+- `HighlightExtension` — text and background color highlighting
+- `TablesExtension` — table insertion and editing
+- `TrixContentExtension` — backward-compatible import of existing Trix HTML
+- `ProvisionalParagraphExtension` — placeholder paragraph management
 
 ## Remote Video Attachable
 
-Pattern for embedding remote videos (YouTube, Vimeo) as ActionText attachments:
+Lexxy includes a built-in `ActionText::Attachables::RemoteVideo` class for embedding remote videos (YouTube, Vimeo) without an ActiveRecord model. It resolves from `<action-text-attachment>` nodes with a video content type and URL:
+
+```ruby
+# Built-in: lib/action_text/attachables/remote_video.rb
+# Automatically resolves from nodes with content-type matching /^video/
+# Attributes: url, content_type, width, height, filename
+# Renders via: action_text/attachables/_remote_video partial
+```
+
+For custom metadata or access control, create your own model instead:
 
 ```ruby
 class RemoteVideo < ApplicationRecord
