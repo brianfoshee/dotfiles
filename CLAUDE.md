@@ -34,6 +34,12 @@ The `claude/skills/` directory contains two specialized skills that extend Claud
 
 **rails-architect**: Expert Ruby on Rails architect for reviewing Rails applications, suggesting architectural improvements, and designing new features following modern Rails best practices. Based on 37signals/Basecamp production patterns with comprehensive documentation and examples.
 
+### 3rd Party Skills
+
+Some skills are maintained in external repositories and cloned directly into `claude/skills/`. These cloned repos are gitignored since they are tracked in their own repositories.
+
+**rails-audit-thoughtbot**: Cloned into `claude/skills/rails-audit-thoughtbot`. Performs comprehensive Rails application audits based on thoughtbot best practices (Ruby Science, Testing Rails). Source: [thoughtbot/rails-audit-thoughtbot](https://github.com/thoughtbot/rails-audit-thoughtbot).
+
 ## Development Workflow
 
 ### Making Changes to Dotfiles

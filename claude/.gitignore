@@ -21,3 +21,5 @@ tailwind_all_components.json
 tailwind_all_components.old.json
 image-cache/
 sessions
+mcp-needs-auth-cache.json
+skills/rails-audit-thoughtbot/
