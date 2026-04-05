@@ -40,6 +40,8 @@ Some skills are maintained in external repositories and cloned directly into `cl
 
 **rails-audit-thoughtbot**: Cloned into `claude/skills/rails-audit-thoughtbot`. Performs comprehensive Rails application audits based on thoughtbot best practices (Ruby Science, Testing Rails). Source: [thoughtbot/rails-audit-thoughtbot](https://github.com/thoughtbot/rails-audit-thoughtbot).
 
+**sosumi**: Single-file skill at `claude/skills/sosumi/SKILL.md` (tracked in this repo, not gitignored). Fetches Apple documentation as Markdown via Sosumi for API reference, Human Interface Guidelines, WWDC transcripts, and external Swift-DocC pages. Source: [sosumi.ai](https://sosumi.ai). Update with `curl -o claude/skills/sosumi/SKILL.md https://sosumi.ai/SKILL.md`.
+
 ## Development Workflow
 
 ### Making Changes to Dotfiles
