@@ -25,7 +25,7 @@ Production-proven pattern for using Lexxy instead of Trix as the rich text edito
 
 ```ruby
 # Gemfile
-gem "lexxy", "~> 0.8.0.beta"
+gem "lexxy", "~> 0.9.0.beta"  # still beta at time of writing
 ```
 
 ### JavaScript Import
@@ -62,14 +62,32 @@ import "@37signals/lexxy"
 
 ### Configuration
 
-By default, Lexxy overrides ActionText helpers. To opt out:
+Lexxy integrates with ActionText via one of two paths depending on the Rails version it detects at load time:
+
+**Rails 8.2+ (adapter path).** Lexxy auto-registers itself as the ActionText editor adapter via `config.action_text.editor = :lexxy` (shipped in 0.9.5+). The standard `form.rich_textarea` / `form.rich_text_area` helpers emit `<lexxy-editor>` directly through the `ActionText::Editor` interface. No override flag exists on this path. To opt out for a specific model, set a different registered adapter:
+
+```ruby
+class Article < ApplicationRecord
+  has_rich_text :content, editor: :trix
+end
+```
+
+Or globally in `config/application.rb`:
+
+```ruby
+config.action_text.editor = :trix
+```
+
+**Rails 8.0/8.1 (monkey-patch fallback).** Lexxy prepends modules onto the ActionText tag helpers to override `rich_textarea` / `rich_text_area`. To opt out and call the lexxy-specific helpers explicitly instead:
 
 ```ruby
 # config/application.rb
 config.lexxy.override_action_text_defaults = false
 ```
 
-Then use explicitly: `form.lexxy_rich_text_area :content`
+Then use: `form.lexxy_rich_text_area :content`
+
+`Lexxy.supports_editor_adapter?` (in `lib/lexxy.rb`) is the switch — it returns true when `ActionText::Editor#editor_tag` accepts a block (rails/rails#56926), which is the signal that the app is on the adapter path.
 
 ### Editor Attributes
 
@@ -1005,13 +1023,46 @@ Rails.application.config.to_prepare do
 
   # Additional attributes
   ActionText::ContentHelper.allowed_attributes += %w[
-    controls poster data-language style
+    controls poster data-language style value
   ]
 
   # CSS variables support
   Loofah::HTML5::SafeList::ALLOWED_CSS_FUNCTIONS << "var"
 end
 ```
+
+### Editor-Side Sanitization (DOMPurify)
+
+**This is separate from the server-side Action Text sanitizer above.** Since 0.9.4, Lexxy runs DOMPurify over the `innerHtml` of every custom attachment before inserting it into the editor's in-place preview. 0.9.7 further tightened this pass. The client allowlist is built from each active extension's `allowedElements` getter plus a small set of globally-permitted attributes (`class`, `contenteditable`, `href`, `src`, `style`, `title`).
+
+The practical consequence: if your custom attachment partial emits tags beyond the common block/inline set — most commonly `<iframe>` for Spotify / Apple Music / YouTube embeds — they'll be stripped in the *editor preview* even though the *saved/published* HTML is intact (because that goes through the server-side `ActionText::ContentHelper` allowlist, which is independent). Symptom: the attachment appears to render correctly after saving but looks broken or empty while editing.
+
+Extend the editor-side allowlist by registering a Lexxy extension:
+
+```javascript
+// app/javascript/application.js
+import * as Lexxy from "lexxy"
+
+class EmbedIframeExtension extends Lexxy.Extension {
+  get allowedElements() {
+    return [
+      {
+        tag: "iframe",
+        attributes: [
+          "width", "height", "allow", "allowfullscreen",
+          "frameborder", "loading", "sandbox"
+        ]
+      }
+    ]
+  }
+}
+
+Lexxy.configure({ global: { extensions: [EmbedIframeExtension] } })
+```
+
+`allowedElements` entries can be either a bare tag name string (just allowed, no extra per-tag attributes) or `{ tag, attributes }` objects. The globally-permitted attributes still apply on top, so `class`/`src`/`style` survive without being listed per tag.
+
+Make sure the server-side allowlist in `config/initializers/lexxy.rb` (or equivalent) *also* permits the tag, or published content will silently drop it.
 
 ---
 
@@ -1173,6 +1224,18 @@ export default class extends Controller {
 
 Rails 8.2 extracts `ActionText::Editor` as a base class, decoupling ActionText from Trix. `ActionText::TrixEditor` is the built-in reference implementation.
 
+Lexxy 0.9.5+ registers itself automatically on this path:
+
+```ruby
+# lib/lexxy/engine.rb (in Lexxy, for reference)
+initializer "lexxy.action_text_editor", before: "action_text.editors" do |app|
+  app.config.action_text.editors[:lexxy] = {}
+  app.config.action_text.editor = :lexxy
+end
+```
+
+So on Rails 8.2+ with lexxy installed, every `has_rich_text` field uses Lexxy by default. To use a different editor (globally or per-model), set `config.action_text.editor` or pass `editor:` on the model declaration. To confirm the current state at runtime: `Rails.application.config.action_text.editor`.
+
 ### Editor Interface
 
 Custom editors subclass `ActionText::Editor` and implement two transformation methods:
@@ -1267,6 +1330,15 @@ class MyExtension extends Extension {
   // Return a Lexical extension (nodes, plugins, etc.)
   get lexicalExtension() {
     return null
+  }
+
+  // Contribute tags/attributes to the editor's DOMPurify allowlist.
+  // Each entry is either a bare tag string or { tag, attributes }.
+  // See "Editor-Side Sanitization" under HTML Sanitization above.
+  get allowedElements() {
+    return [
+      { tag: "iframe", attributes: ["width", "height", "allow", "allowfullscreen", "frameborder", "loading", "sandbox"] }
+    ]
   }
 
   // Add custom toolbar buttons
