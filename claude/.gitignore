@@ -15,6 +15,7 @@ stats-cache.json
 .claude.json
 .credentials.json
 .claude.json.backup.*
+.last-cleanup
 cache/
 paste-cache/
 tasks/
