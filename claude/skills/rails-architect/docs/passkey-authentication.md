@@ -301,7 +301,6 @@ end
 # 1. Generate and store in session
 session[:webauthn_challenge] = options.challenge
 session[:webauthn_challenge_created_at] = Time.current
-session[:webauthn_user_id] = user.id
 
 # 2. Retrieve and validate (single-use)
 challenge = session.delete(:webauthn_challenge)
@@ -312,6 +311,12 @@ if Time.current - created_at > 10.minutes
   return render json: { error: 'Challenge expired' }, status: :unprocessable_entity
 end
 ```
+
+> **Do not** stash a `:webauthn_user_id` in the session for *registration*. Both
+> `begin` and `complete` should derive the user from `current_user` and never
+> from a params- or session-supplied id. See the security note in the
+> Registration controller section below for the account-takeover that pattern
+> enables.
 
 ## Magic Links for Passkey Setup
 
@@ -606,13 +611,26 @@ end
 
 ### WebAuthn Registration
 
+> ⚠️ **Security: never accept `user_id` from params or session for registration.**
+> The user must be derived from `current_user` only. Earlier versions of this
+> guide showed a `User.find(params[:user_id] || current_user.id)` pattern and
+> stashed `session[:webauthn_user_id]`, then called `login(user)` after
+> creating the credential. That pattern is an account-takeover vulnerability:
+> any authenticated user could pass another user's id to `begin`, complete the
+> ceremony with their own authenticator, and end up logged in as the target
+> with a persistent passkey on their device. Bind everything to `current_user`,
+> drop the post-registration `login()` call (the user is already logged in via
+> the magic link), and use `current_user.id` for rate limiting.
+
 ```ruby
 class Webauthn::RegistrationController < ApplicationController
+  # NOTE: no skip_before_action :require_authentication — registration is
+  # only reachable after the user has logged in via magic link.
   rate_limit to: 5, within: 15.minutes,
-             by: -> { params[:user_id] || session[:webauthn_user_id] }
+             by: -> { current_user&.id }
 
   def begin
-    user = User.find(params[:user_id] || current_user.id)
+    user = current_user
 
     options = WebAuthn::Credential.options_for_create(
       user: {
@@ -620,17 +638,19 @@ class Webauthn::RegistrationController < ApplicationController
         name: user.email,
         display_name: user.name
       },
-      exclude: user.credentials.pluck(:credential_id),
+      exclude: user.credentials.pluck(:credential_id).map { |id|
+        Base64.urlsafe_encode64(id, padding: false)
+      },
       authenticator_selection: {
         resident_key: 'preferred',
         user_verification: 'preferred'
       }
     )
 
-    # Store challenge in session (single-use)
+    # Store challenge in session (single-use). DO NOT stash user_id here —
+    # complete() must read the user from current_user, not from the session.
     session[:webauthn_challenge] = options.challenge
     session[:webauthn_challenge_created_at] = Time.current
-    session[:webauthn_user_id] = user.id
 
     render json: options
   end
@@ -639,10 +659,9 @@ class Webauthn::RegistrationController < ApplicationController
     # Retrieve challenge from session (single-use)
     challenge = session.delete(:webauthn_challenge)
     created_at = session.delete(:webauthn_challenge_created_at)
-    user_id = session.delete(:webauthn_user_id)
 
     # Validate presence and expiration
-    unless challenge && created_at && user_id
+    unless challenge && created_at
       return render json: { error: 'No active registration challenge' },
                     status: :unprocessable_entity
     end
@@ -652,21 +671,25 @@ class Webauthn::RegistrationController < ApplicationController
                     status: :unprocessable_entity
     end
 
-    user = User.find(user_id)
+    # Always bind to current_user. Trusting any session- or param-supplied
+    # user id here would let an authenticated attacker register a passkey
+    # under another user's account.
+    user = current_user
     webauthn_credential = WebAuthn::Credential.from_create(params[:credential])
 
     begin
       webauthn_credential.verify(challenge)
 
       credential = user.credentials.create!(
-        credential_id: webauthn_credential.id,
+        credential_id: Base64.urlsafe_decode64(webauthn_credential.id),
         public_key: webauthn_credential.public_key,
         sign_count: webauthn_credential.sign_count,
-        aaguid: webauthn_credential.aaguid,
-        transports: webauthn_credential.transports || []
+        aaguid: webauthn_credential.response.aaguid,
+        transports: webauthn_credential.response.transports || []
       )
 
-      login(user)
+      # No login(user) here — the user is already authenticated. Re-logging
+      # them in based on a session-stored id is the takeover vector.
       render json: { success: true, redirect_url: jobs_path }
 
     rescue WebAuthn::Error => e
@@ -1027,6 +1050,40 @@ end
 ```
 
 ## Security Considerations
+
+### Never trust a user id from params or session during registration
+
+The `Webauthn::RegistrationController` actions must derive the user from
+`current_user` only. Specifically:
+
+- `begin` must NOT do `User.find(params[:user_id] || current_user.id)`.
+- `begin` must NOT stash `session[:webauthn_user_id]`.
+- `complete` must NOT read user id from the session or params.
+- `complete` must NOT call `login(user)` at all — the user is already logged
+  in via the magic link that landed them on the setup page.
+
+If any of those is wrong, an authenticated attacker can pass a victim's id to
+`begin`, complete the WebAuthn ceremony with their own authenticator, and end
+up logged in as the victim with a persistent passkey on their own device.
+Without RBAC this is full account takeover from any login. The ceremony
+finishing successfully proves only that the attacker possesses *some*
+authenticator — it says nothing about which user the credential should belong
+to. That binding has to come from the server-side authenticated session.
+
+A concrete regression test for this:
+
+```ruby
+test "begin ignores user_id param targeting another user" do
+  login_as(@user)  # current_user = @user
+  post webauthn_registration_begin_path, params: { user_id: @other_user.id }
+  assert_response :success
+
+  json = JSON.parse(response.body)
+  # Response must bind to current_user, not the supplied victim id.
+  assert_equal @user.email, json["user"]["name"]
+  refute_equal @other_user.id, session[:webauthn_user_id]
+end
+```
 
 ### Signature Counter Validation
 
