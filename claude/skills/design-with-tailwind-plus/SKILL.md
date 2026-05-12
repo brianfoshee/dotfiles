@@ -189,7 +189,7 @@ Tailwind Plus footer components use **Simple Icons** (https://simpleicons.org) f
 ## Reference Documentation
 
 ### Local
-- **`tailwind.md`** - Tailwind CSS v4.1 reference (utilities, responsive design, state variants, dark mode, theme customization, directives, best practices)
+- **`tailwind.md`** - Tailwind CSS v4.3 reference (utilities, responsive design, state variants, dark mode, theme customization, directives, best practices)
 
 ### Online
 - Tailwind CSS Docs: https://tailwindcss.com/docs

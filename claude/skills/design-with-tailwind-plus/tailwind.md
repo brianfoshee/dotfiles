@@ -1,6 +1,6 @@
-# Tailwind CSS v4.1 - Complete Reference
+# Tailwind CSS v4.3 - Complete Reference
 
-This document provides comprehensive coverage of Tailwind CSS v4.1 core concepts, patterns, and best practices.
+This document provides comprehensive coverage of Tailwind CSS core concepts, patterns, and best practices. Latest version: v4.3.
 
 ## Table of Contents
 - [Philosophy and Core Concepts](#philosophy-and-core-concepts)
@@ -408,6 +408,16 @@ Modern alternative to viewport-based breakpoints. Style elements based on their 
 ```html
 <div class="@container/main">
   <div class="@lg/main:text-xl">
+```
+
+**Size containers:**
+
+`@container` creates an inline-size container. Use `@container-size` when children need block-direction container query units (`cqb`, `cqh`):
+
+```html
+<div class="@container-size">
+  <div class="h-[50cqh]">Half the container's height</div>
+</div>
 ```
 
 ---
@@ -1136,6 +1146,19 @@ Registers custom utilities that respond to variants:
 <div class="content-auto">
 ```
 
+Use `--default(...)` to make a functional utility usable with or without a value:
+
+```css
+@utility tab-* {
+  tab-size: --value(integer, --default(4));
+}
+```
+
+```html
+<pre class="tab">      <!-- defaults to 4 -->
+<pre class="tab-8">
+```
+
 **Advanced custom utilities:**
 ```css
 /* Functional utility */
@@ -1166,6 +1189,16 @@ Applies Tailwind variants to custom CSS:
 
   @variant hover {
     opacity: 0.8;
+  }
+
+  /* Stacked: applies when both match */
+  @variant hover:focus {
+    outline: 2px solid currentColor;
+  }
+
+  /* Compound: applies when either matches */
+  @variant hover, focus {
+    background: var(--color-blue-50);
   }
 }
 ```
@@ -1460,6 +1493,10 @@ Tailwind includes **22 color families** organized into chromatic colors and neut
 - `zinc` - Cool gray with slightly less saturation than slate
 - `neutral` - Pure neutral gray
 - `stone` - Warm gray with brown undertones
+- `mauve` - Warm gray with violet undertones
+- `olive` - Warm gray with yellow-green undertones
+- `mist` - Cool gray with cyan undertones
+- `taupe` - Warm gray with red-brown undertones
 
 **Special Colors:**
 - `black`, `white`, `transparent`, `current`, `inherit`

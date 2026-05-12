@@ -22,9 +22,36 @@ module User::Role
 
   included do
     enum :role, %i[ owner admin member system ].index_by(&:itself), scopes: false
+
+    scope :owner, -> { where(active: true, role: :owner) }
+    scope :admin, -> { where(active: true, role: %i[ owner admin ]) }
+    scope :member, -> { where(active: true, role: :member) }
+    scope :active, -> { where(active: true, role: %i[ owner admin member ]) }
+
+    def admin?
+      super || owner?
+    end
+  end
+
+  def can_change?(other)
+    (admin? && !other.owner?) || other == self
+  end
+
+  def can_administer?(other)
+    admin? && !other.owner? && other != self
+  end
+
+  def can_administer_board?(board)
+    admin? || board.creator == self
+  end
+
+  def can_administer_card?(card)
+    admin? || card.creator == self
   end
 end
 ```
+
+The same module holds the enum, the active-aware scopes, the `admin?` cascade, and every `can_*` permission method. No separate `User::Administrator` module — keep all role/permission logic in one place.
 
 **owner** - Account creator with highest privileges
 - Only one per account (business logic enforced)
@@ -66,19 +93,13 @@ end
 
 ### Hierarchical Permissions
 
-Make higher roles automatically include lower role permissions:
+Override `admin?` so owners are admins for permission checks. Don't override `member?` — let the enum's predicate stand on its own; "is this user a member specifically" is a different question from "can this user act administratively." Cascading every role muddies that distinction.
 
 ```ruby
-# app/models/user.rb
-class User < ApplicationRecord
-  include Role
-
+# app/models/user/role.rb
+included do
   def admin?
     super || owner?  # Owner is also an admin
-  end
-
-  def member?
-    super || admin?  # Admin is also a member
   end
 end
 ```
@@ -226,8 +247,21 @@ end
 **Layer 4: Role-Based Guards**
 ```ruby
 # app/controllers/concerns/authorization.rb
-def ensure_admin
-  head :forbidden unless Current.user.admin?
+module Authorization
+  extend ActiveSupport::Concern
+
+  included do
+    before_action :ensure_can_access_account, if: :authenticated_account_access?
+  end
+
+  private
+    def ensure_admin
+      head :forbidden unless Current.user.admin?
+    end
+
+    def ensure_staff
+      head :forbidden unless Current.identity.staff?
+    end
 end
 
 # Usage in controllers
@@ -236,15 +270,15 @@ class WebhooksController < ApplicationController
 end
 ```
 
-**Purpose:** Restrict entire controllers to specific roles.
+**Purpose:** Restrict entire controllers to specific roles. `ensure_admin` operates on `Current.user` (account-scoped role); `ensure_staff` operates on `Current.identity` (cross-account internal staff). Both live in the same `Authorization` concern alongside `ensure_can_access_account`.
 
 ## Authorization Patterns
 
 ### Pattern 1: Role + Ownership
 
 ```ruby
-# app/models/user/administrator.rb
-module User::Administrator
+# app/models/user/role.rb
+module User::Role
   def can_administer_board?(board)
     admin? || board.creator == self
   end
@@ -439,8 +473,8 @@ end
 ## Permission Methods on User
 
 ```ruby
-# app/models/user/administrator.rb
-module User::Administrator
+# app/models/user/role.rb
+module User::Role
   # Resource administration
   def can_administer_board?(board)
     admin? || board.creator == self
@@ -458,15 +492,10 @@ module User::Administrator
   def can_change?(other)
     (admin? && !other.owner?) || other == self
   end
-
-  # Account settings
-  def can_administer_account?
-    owner?
-  end
 end
 ```
 
-**Pattern:** Descriptive method names that combine role + context.
+**Pattern:** Descriptive method names that combine role + context. Account-wide admin actions don't get their own predicate — they use `before_action :ensure_admin` from the `Authorization` concern, which is enough since `admin?` already includes owners.
 
 ## Scoping Associations for Access
 
