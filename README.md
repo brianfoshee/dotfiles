@@ -19,7 +19,6 @@ ln -s ~/.dotfiles/hushlogin ~/.hushlogin
 ln -s ~/.dotfiles/psqlrc ~/.psqlrc
 ln -s ~/.dotfiles/sqliterc ~/.sqliterc
 ln -s ~/.dotfiles/tmux.conf ~/.tmux.conf
-ln -s ~/.dotfiles/tmuxline-snapshot ~/.tmuxline-snapshot
 ln -s ~/.dotfiles/vimrc ~/.vimrc
 ln -s ~/.dotfiles/zshrc ~/.zshrc
 ln -s ~/.dotfiles/nofrils-dark.vim ~/.vim/colors/nofrils-dark.vim
@@ -29,13 +28,4 @@ ln -s ~/.dotfiles/claude ~/.claude
 
 # oh-my-zsh theme
 ln -s ~/.dotfiles/brianfoshee.zsh-theme ~/.oh-my-zsh/themes/brianfoshee.zsh-theme
-```
-
-## Tmuxline Snapshot
-
-To generate Tmuxline snapshot file:
-
-```
-Tmuxline airline
-TmuxlineSnapshot! ~/.dotfiles/tmuxline-snapshot
 ```
