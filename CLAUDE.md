@@ -16,7 +16,7 @@ This is Brian's personal dotfiles repository containing shell configurations (zs
 - **claude/**: Claude Code configuration directory. Symlink this to `~/.claude` for global Claude settings. Contains CLAUDE.md (project-specific guidelines), settings.json, two custom skills (design-with-tailwind-plus and rails-architect), and plugin marketplace integration.
 - **Brewfile**: Homebrew package manifest with 157 packages/taps for automated environment setup.
 - **install.sh**: Automated dotfiles installation script with backup functionality for existing files.
-- **Other configs**: psqlrc, sqliterc, gemrc, gitignore_global, hushlogin for database and shell customization.
+- **Other configs**: psqlrc, sqliterc, gemrc, gitignore_global, ignore (cross-project rg/ag ignore patterns, symlinked to `~/.ignore`), hushlogin for database and shell customization.
 
 ### Key Patterns
 

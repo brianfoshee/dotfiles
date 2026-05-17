@@ -15,6 +15,7 @@ Or manually create individual symbolic links:
 # Core configuration files
 ln -s ~/.dotfiles/gemrc ~/.gemrc
 ln -s ~/.dotfiles/gitignore_global ~/.gitignore_global
+ln -s ~/.dotfiles/ignore ~/.ignore
 ln -s ~/.dotfiles/hushlogin ~/.hushlogin
 ln -s ~/.dotfiles/psqlrc ~/.psqlrc
 ln -s ~/.dotfiles/sqliterc ~/.sqliterc

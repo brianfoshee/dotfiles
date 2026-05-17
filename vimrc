@@ -20,7 +20,6 @@ Plug 'alvan/vim-closetag' " closes matching HTML tags
 
 " Ruby plugin
 Plug 'vim-ruby/vim-ruby'
-Plug 'prabirshrestha/vim-lsp'
 
 " Terraform
 Plug 'hashivim/vim-terraform'
@@ -28,7 +27,6 @@ Plug 'hashivim/vim-terraform'
 " All of your Plugins must be added before the following line
 call plug#end()            " required
 
-set nocompatible
 set encoding=utf-8
 set showcmd
 set ruler
@@ -37,23 +35,26 @@ set tabstop=2
 set shiftwidth=2
 set softtabstop=2
 set expandtab
-set backspace=2
+set backspace=indent,eol,start
 set autoindent
 set cursorline
 set hlsearch                    " highlight matches
 set incsearch                   " incremental searching
-set ignorecase                  " searches are case insensitive...
+set ignorecase                  " case-insensitive...
+set smartcase                   " ...unless the pattern has uppercase
 set laststatus=2                " something about vim-airline
 set noshowmode
 set noerrorbells visualbell t_vb= "turn off annoying bells
-set ttyfast                     " when key repeat rate is really fast, keep up!
 set hidden                      " Hide a buffer when it is abandoned.
+set scrolloff=5                 " keep 5 lines of context above/below cursor
+set mouse=a                     " mouse support in all modes
 " Open new split panes to right and bottom, which feels more natural
 set splitbelow
 set splitright
 set backupdir=~/.vim/backup//
 set directory=~/.vim/swap//
 set undodir=~/.vim/undo//
+set undofile                    " persist undo history across sessions
 syntax on
 set nocursorcolumn
 set nocursorline
@@ -83,7 +84,7 @@ nnoremap <leader>dd :Lexplore %:p:h<CR>
 " open Netrw in the current working directory
 nnoremap <Leader>da :Lexplore<CR>
 
-" Explore window 30%
+" Explore window 20%
 let g:netrw_winsize = 20
 
 " Enable spell checking for certain filetypes
@@ -91,40 +92,15 @@ let g:netrw_winsize = 20
 " Turn on syntax highlighting for git commits
 " autocmd FileType gitcommit syntax on
 
-" Set ignore list
-set wildignore+=Godeps/_workspace/**,**/_site/**,**/bower_components/**,**/node_modules/**,**/vendor/**,**/tmp/**,*.o,*.out,*.log,**/cookbooks/**,*.swp,*.swo
+" Skip these in vim's built-in file completion (:edit, :find, glob()).
+" rg has its own ignore mechanism via ~/.ignore + .gitignore.
+set wildignore+=*.swp,*.swo,*~
+set wildignore+=.git/**,**/.DS_Store
+set wildignore+=**/node_modules/**,**/vendor/**,**/tmp/**
 
-" This overrides wildignore when using ctrlp
-let g:ctrlp_user_command = 'ag %s --ignore-case --skip-vcs-ignores --nocolor --nogroup --hidden
-      \ --ignore ".git/"
-      \ --ignore ".svn/"
-      \ --ignore ".hg/"
-      \ --ignore ".vagrant/"
-      \ --ignore ".cache/"
-      \ --ignore ".caches/"
-      \ --ignore ".gem/"
-      \ --ignore ".config/"
-      \ --ignore ".node-gyp/"
-      \ --ignore ".npm/"
-      \ --ignore ".particledev/"
-      \ --ignore "Godeps/_workspace/"
-      \ --ignore "_site/"
-      \ --ignore "bower_components/"
-      \ --ignore "node_modules/"
-      \ --ignore ".DS_Store"
-      \ --ignore "*.o"
-      \ --ignore "*.out"
-      \ --ignore "*.swp"
-      \ --ignore "*.swo"
-      \ --ignore "*.pyc"
-      \ --ignore ".keep"
-      \ --ignore "vendor/"
-      \ --ignore "tmp/"
-      \ --ignore "dist/"
-      \ --ignore ".terraform"
-      \ --ignore "*.xcodeproj/"
-      \ --ignore "Assets.xcassets/"
-      \ -g ""'
+" ctrlp uses ripgrep. Project ignores live in .gitignore; cross-project
+" ignores live in ~/.ignore (tracked as `ignore` in this repo).
+let g:ctrlp_user_command = 'rg %s --files --hidden --glob "!.git/*"'
 
 let g:ctrlp_map = '<leader>p'
 let g:ctrlp_cmd = 'CtrlP'
@@ -136,19 +112,15 @@ let g:ctrlp_cmd = 'CtrlP'
 nnoremap <silent> <C-l> :nohl<CR><C-l>
 " Repeat last command
 vnoremap . :norm.<CR>
-" Open ECMAScript 6 files as javascript filetypes
-au BufNewFile,BufRead *.es6 set filetype=javascript
 
 " Open a new empty buffer
-nmap <leader>T :enew<CR>
-nmap <leader>bq :bp <BAR> bd #<CR>
-nmap <leader>l :bnext<CR>
-nmap <leader>h :bprevious<CR>
+nnoremap <leader>T :enew<CR>
+nnoremap <leader>bq :bp <BAR> bd #<CR>
+nnoremap <leader>l :bnext<CR>
+nnoremap <leader>h :bprevious<CR>
 
-" any .md files are markdown files
-autocmd BufNewFile,BufReadPost *.md set filetype=markdown
 " Wrap text at 80 chars for markdown files
-au BufRead,BufNewFile *.md setlocal textwidth=80
+autocmd FileType markdown setlocal textwidth=80
 
 " Autocommand to run git stripspace on file save
 augroup GitStripspace
@@ -224,14 +196,11 @@ let g:airline_symbols.whitespace = 'Ξ'
 " Setup closetag.vim to only work with html files
 let g:closetag_filenames = '*.html,*.html.erb'
 
-" use go formatting
-autocmd FileType go setlocal tabstop=4 softtabstop=4 shiftwidth=4 noexpandtab
+" ─── vim-go ──────────────────────────────────────────────────────────────────
 
-" Setup vim-go to automatically import paths
 let g:go_fmt_command = "goimports"
-" use gopls
 let g:go_def_mode='gopls'
 let g:go_info_mode='gopls'
-au FileType go nmap <leader>d :GoDef<CR>
-au FileType go nmap <leader>ga :GoAlternate<CR>
-au FileType go nmap <leader>gd :GoDecls<CR>
+au FileType go nnoremap <leader>gd :GoDef<CR>
+au FileType go nnoremap <leader>gD :GoDecls<CR>
+au FileType go nnoremap <leader>ga :GoAlternate<CR>
