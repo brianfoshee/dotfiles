@@ -17,7 +17,7 @@ ZSH_THEME="brianfoshee"
 
 DISABLE_UNTRACKED_FILES_DIRTY="true"
 
-plugins=(git brew gh mise golang tmux)
+plugins=(git brew gh mise golang)
 
 source $ZSH/oh-my-zsh.sh
 
