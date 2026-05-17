@@ -22,8 +22,6 @@ This is Brian's personal dotfiles repository containing shell configurations (zs
 
 **Vim Stripspace**: The vimrc includes a sophisticated autocmd that runs `git stripspace` on save, with exclusions for certain file types. It preserves cursor position and undo history using temporary undo files. Don't modify this pattern without testing thoroughly.
 
-**Tmux Window Naming**: Tmux is configured to accept window name changes via escape sequences. Use `printf '\033k%s\033\\' "name"` to set window names programmatically. This is used by the global CLAUDE.md tmux window management rules.
-
 **API Token Pattern**: Both GitHub and Anthropic API tokens are sourced from separate files (`~/.github-api-token`, `~/.anthropic-api-token`) in the home directory, not stored in this repo. These files should export the appropriate environment variables.
 
 ### Custom Claude Skills
