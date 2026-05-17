@@ -40,6 +40,7 @@ echo
 # Core configuration files
 link_file "$DOTFILES_DIR/gemrc" "$HOME/.gemrc"
 link_file "$DOTFILES_DIR/gitignore_global" "$HOME/.gitignore_global"
+link_file "$DOTFILES_DIR/ignore" "$HOME/.ignore"
 link_file "$DOTFILES_DIR/hushlogin" "$HOME/.hushlogin"
 link_file "$DOTFILES_DIR/psqlrc" "$HOME/.psqlrc"
 link_file "$DOTFILES_DIR/sqliterc" "$HOME/.sqliterc"

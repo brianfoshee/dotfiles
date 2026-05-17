@@ -1,0 +1,51 @@
+# Cross-project ignore patterns for ripgrep and the_silver_searcher.
+# Symlinked to ~/.ignore — read globally by rg and ag in addition to
+# per-project .gitignore files. Use gitignore-style syntax.
+
+# version control
+.git/
+.svn/
+.hg/
+
+# OS / editor cruft
+.DS_Store
+*.swp
+*.swo
+*.swn
+
+# vim local dirs
+.vim/backup/
+.vim/swap/
+.vim/undo/
+
+# language ecosystems
+node_modules/
+bower_components/
+vendor/
+Godeps/_workspace/
+*.pyc
+__pycache__/
+.gem/
+.npm/
+.node-gyp/
+
+# build / generated
+dist/
+_site/
+tmp/
+.cache/
+.caches/
+*.o
+*.out
+
+# infrastructure
+.vagrant/
+.terraform/
+
+# apple ecosystem
+*.xcodeproj/
+Assets.xcassets/
+
+# misc
+.keep
+.particledev/
