@@ -14,7 +14,6 @@ Plug 'tpope/vim-fugitive' " git wrapper
 Plug 'ctrlpvim/ctrlp.vim' " search for files
 Plug 'vim-airline/vim-airline' " nice looking status bar
 Plug 'vim-airline/vim-airline-themes' " nice looking status bar
-Plug 'edkolev/tmuxline.vim' " nice looking tmux status bar
 
 " HTML/CSS/JS plugins
 Plug 'alvan/vim-closetag' " closes matching HTML tags
@@ -222,10 +221,6 @@ let g:airline_symbols.linenr = '¶'
 let g:airline_symbols.branch = '⎇'
 let g:airline_symbols.paste = 'ρ'
 let g:airline_symbols.whitespace = 'Ξ'
-" Don't override .tmuxline-snapshot
-let g:airline#extensions#tmuxline#enabled = 0
-let g:tmuxline_powerline_separators = 0
-
 " Setup closetag.vim to only work with html files
 let g:closetag_filenames = '*.html,*.html.erb'
 

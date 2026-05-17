@@ -44,7 +44,6 @@ link_file "$DOTFILES_DIR/hushlogin" "$HOME/.hushlogin"
 link_file "$DOTFILES_DIR/psqlrc" "$HOME/.psqlrc"
 link_file "$DOTFILES_DIR/sqliterc" "$HOME/.sqliterc"
 link_file "$DOTFILES_DIR/tmux.conf" "$HOME/.tmux.conf"
-link_file "$DOTFILES_DIR/tmuxline-snapshot" "$HOME/.tmuxline-snapshot"
 link_file "$DOTFILES_DIR/vimrc" "$HOME/.vimrc"
 link_file "$DOTFILES_DIR/zshrc" "$HOME/.zshrc"
 
