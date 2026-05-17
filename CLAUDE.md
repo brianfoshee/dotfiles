@@ -42,6 +42,8 @@ Some skills are maintained in external repositories and cloned directly into `cl
 
 **sosumi**: Single-file skill at `claude/skills/sosumi/SKILL.md` (tracked in this repo, not gitignored). Fetches Apple documentation as Markdown via Sosumi for API reference, Human Interface Guidelines, WWDC transcripts, and external Swift-DocC pages. Source: [sosumi.ai](https://sosumi.ai). Update with `curl -o claude/skills/sosumi/SKILL.md https://sosumi.ai/SKILL.md`.
 
+**agent-browser**: Single-file skill at `claude/skills/agent-browser/SKILL.md` (tracked in this repo, not gitignored). Discovery stub for the `agent-browser` CLI — a Rust-based browser automation tool for AI agents (Chrome/Chromium via CDP, accessibility-tree snapshots, `@eN` element refs). Real workflow content is served at runtime by the CLI via `agent-browser skills get core`, so the stub never goes stale. Requires the CLI: `brew install agent-browser` then `agent-browser install` to fetch Chrome for Testing. Source: [vercel-labs/agent-browser](https://github.com/vercel-labs/agent-browser). Update with `curl -o claude/skills/agent-browser/SKILL.md https://raw.githubusercontent.com/vercel-labs/agent-browser/main/skills/agent-browser/SKILL.md`.
+
 ## Development Workflow
 
 ### Making Changes to Dotfiles
