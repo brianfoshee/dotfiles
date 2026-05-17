@@ -81,16 +81,15 @@ fi
 bindkey '\e[A' history-beginning-search-backward
 bindkey '\e[B' history-beginning-search-forward
 
-# export a github api token for:
-#   - so homebrew commands don't hit api limits
-#   - For claude to run gh cli commands and access the github MCP server
-if [[ -s ${HOME}/.github-api-token ]]; then
-  source $HOME/.github-api-token
-fi
-
 # add uv binaries to path
 export PATH="$HOME/.local/bin:$PATH"
 
 # Added by LM Studio CLI (lms)
 export PATH="$PATH:$HOME/.lmstudio/bin"
 # End of LM Studio CLI section
+
+# Machine-specific config (API tokens, VM env, host overrides).
+# Not tracked in this repo. Sourced last so it can override anything above.
+if [[ -s ${HOME}/.zshrc.local ]]; then
+  source $HOME/.zshrc.local
+fi

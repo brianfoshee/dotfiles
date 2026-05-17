@@ -29,3 +29,13 @@ ln -s ~/.dotfiles/claude ~/.claude
 # oh-my-zsh theme
 ln -s ~/.dotfiles/brianfoshee.zsh-theme ~/.oh-my-zsh/themes/brianfoshee.zsh-theme
 ```
+
+## Machine-Specific Config
+
+`~/.zshrc` sources `~/.zshrc.local` at the very end (if present) for host-specific config that doesn't belong in this repo — API tokens, VM secrets, per-machine PATH/alias overrides, etc. The file is `chmod 600` and not tracked here. Create it on each new machine and source whatever that host needs:
+
+```zsh
+# example ~/.zshrc.local
+[[ -s ~/.github-api-token ]] && source ~/.github-api-token  # laptop
+[[ -s ~/.exedevrc ]] && source ~/.exedevrc                  # exe.dev VM
+```
