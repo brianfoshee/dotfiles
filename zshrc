@@ -1,7 +1,10 @@
 # Language
 export LANG="en_US.UTF-8"
-export LC_ALL="en_US.UTF-8"
-export SHELL="/bin/zsh"
+
+# Dedupe PATH and fpath (tmux launches login shells per pane, which causes
+# zshrc to re-prepend entries to an already-populated PATH on every nested
+# shell start).
+typeset -U path PATH fpath
 
 # Path to your oh-my-zsh configuration.
 export ZSH=$HOME/.oh-my-zsh
@@ -14,7 +17,7 @@ ZSH_THEME="brianfoshee"
 
 DISABLE_UNTRACKED_FILES_DIRTY="true"
 
-plugins=(git)
+plugins=(git brew gh mise golang tmux)
 
 source $ZSH/oh-my-zsh.sh
 
@@ -35,7 +38,7 @@ fi
 
 # for setting up git / pgp
 # https://gist.github.com/troyfontaine/18c9146295168ee9ca2b30c00bd1b41e
-export GPG_TTY=`tty`
+export GPG_TTY=$(tty)
 
 # Aliases
 alias gs='git status -s'
@@ -57,18 +60,17 @@ alias r='bin/rails'
 alias export-idf='. $HOME/Code/esp/esp-idf/export.sh'
 
 # History control
-export HISTCONTROL=erasedups  # Ignore duplicate entries in history
 export HISTFILE=~/.zsh_history
-export HISTSIZE=10000         # Increases size of history
+export HISTSIZE=10000
 export SAVEHIST=10000
-export HISTIGNORE="&:ls:ll:la:l.:tns:tls:tas:gc:ga:pwd:exit:clear:clr:[bf]g:history"
+setopt HIST_IGNORE_ALL_DUPS HIST_EXPIRE_DUPS_FIRST HIST_IGNORE_SPACE HIST_REDUCE_BLANKS
+HISTORY_IGNORE='(ls|ll|la|l.|tns|tls|ta|gc|ga|pwd|exit|clear|clr|bg|fg|history)'
 
 export GOPATH=$HOME/Code
 export PATH="$HOME/Code/bin:$PATH"
 if command -v brew &>/dev/null; then
   export BREW_PREFIX="$(brew --prefix)"
   export HOMEBREW_CASK_OPTS="--appdir=/Applications"
-  export HOMEBREW_BUNDLE_NO_LOCK=true
   export EDITOR=$BREW_PREFIX/bin/vim
   export PSQL_EDITOR=$EDITOR
   export THOR_MERGE=$BREW_PREFIX/bin/vimdiff
@@ -78,7 +80,6 @@ fi
 # first word (which would be history-search-backward and history-search-forward
 bindkey '\e[A' history-beginning-search-backward
 bindkey '\e[B' history-beginning-search-forward
-bindkey "^?" backward-delete-char
 
 # export a github api token for:
 #   - so homebrew commands don't hit api limits
@@ -87,19 +88,8 @@ if [[ -s ${HOME}/.github-api-token ]]; then
   source $HOME/.github-api-token
 fi
 
-if type brew &>/dev/null; then
-  FPATH=$BREW_PREFIX/share/zsh/site-functions:$FPATH
-fi
-
 # add uv binaries to path
 export PATH="$HOME/.local/bin:$PATH"
-
-# autoload -U +X bashcompinit && bashcompinit
-
-# add ssh key for use with git commit signing
-if [[ "$(uname -s)" == "Darwin" ]]; then
-  ssh-add --apple-use-keychain ~/.ssh/github &>/dev/null
-fi
 
 # Added by LM Studio CLI (lms)
 export PATH="$PATH:$HOME/.lmstudio/bin"
