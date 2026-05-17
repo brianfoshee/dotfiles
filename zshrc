@@ -28,13 +28,6 @@ if [[ $una == *"arm64"* ]]; then
   eval "$(/opt/homebrew/bin/brew shellenv)"
 fi
 
-# setup rbenv.
-# When entering tmux, this will add a duplicate entry into PATH. However, it's
-# needed because otherwise rbenv will come after the system ruby path.
-if command -v rbenv &>/dev/null; then
-  eval "$(rbenv init - zsh)"
-fi
-
 # setup mise for runtime version management
 if command -v mise &>/dev/null; then
   eval "$(mise activate zsh)"

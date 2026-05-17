@@ -70,6 +70,8 @@ brew "libyaml"
 brew "lynx"
 # Mac App Store command-line interface
 brew "mas"
+# Polyglot runtime manager (asdf rust clone)
+brew "mise"
 # HTTP/2 C Library
 brew "nghttp2"
 # Small build system for use with gyp or CMake
@@ -88,10 +90,6 @@ brew "python@3.9"
 brew "qrencode"
 # Cross-platform application and UI framework
 brew "qt"
-# Install various Ruby versions and implementations
-brew "ruby-build"
-# Ruby version manager
-brew "rbenv"
 # Rsync for cloud storage
 brew "rclone"
 # Persistent key-value database, with built-in net interface
