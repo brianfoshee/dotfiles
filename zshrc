@@ -47,6 +47,18 @@ alias ga='git add'
 alias gc='git commit'
 alias gd='git diff'
 alias gr='git rm'
+# Done with a merged branch: switch to the default branch, sync, delete the old one
+gdone() {
+  local prev main
+  prev=$(git symbolic-ref --short HEAD) || return
+  main=$(git symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null)
+  main=${main#origin/}
+  main=${main:-main}
+  git switch "$main" || return
+  git fetch --prune || return
+  git pull || return
+  [ "$prev" != "$main" ] && git branch -d "$prev"
+}
 alias la='ls -alh'
 alias vi='vim'
 alias swiftrepl='xcrun swift -v -sdk $(xcrun --show-sdk-path --sdk macosx)'
