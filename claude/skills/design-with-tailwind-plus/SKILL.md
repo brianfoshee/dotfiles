@@ -116,12 +116,9 @@ The `tailwind_all_components.json` file contains 657 components organized as **s
     "dark": "<!-- HTML for dark theme -->",
     "system": "<!-- HTML for system theme -->"
   },
-  "screenshots": { "desktop": "name.png", "mobile": "name.png" },
   "description": "AI-generated description of design, responsive behavior, use cases, and integration."
 }
 ```
-
-The `screenshots` filenames are metadata only — the PNG files are not shipped with this skill.
 
 ## Finding and Using Components
 
