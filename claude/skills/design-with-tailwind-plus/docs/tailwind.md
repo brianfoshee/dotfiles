@@ -1,113 +1,38 @@
-# Tailwind CSS v4.3 - Complete Reference
+# Tailwind CSS v4 Reference
 
-This document provides comprehensive coverage of Tailwind CSS core concepts, patterns, and best practices. Latest version: v4.3.
+A working reference for Tailwind CSS v4: CSS-first configuration, directives, variants, and the utilities most likely to be missed. For version-specific currency, see https://github.com/tailwindlabs/tailwindcss/releases and https://tailwindcss.com/docs.
 
 ## Table of Contents
-- [Philosophy and Core Concepts](#philosophy-and-core-concepts)
-- [Installation and Setup](#installation-and-setup)
-- [Utility-First Fundamentals](#utility-first-fundamentals)
+- [Installation](#installation)
+- [Arbitrary Values and Escapes](#arbitrary-values-and-escapes)
 - [Responsive Design](#responsive-design)
+- [Container Queries](#container-queries)
 - [State Variants](#state-variants)
 - [Dark Mode](#dark-mode)
-- [Customization](#customization)
-- [Reusing Styles](#reusing-styles)
-- [Directives and Functions](#directives-and-functions)
-- [Best Practices](#best-practices)
+- [CSS-First Customization](#css-first-customization)
+- [Directives](#directives)
+- [Functions](#functions)
+- [Additional Utilities](#additional-utilities)
+- [Colors](#colors)
+- [Quick Reference](#quick-reference)
+- [Common Pitfalls](#common-pitfalls)
+- [Accessibility](#accessibility)
+- [Resources](#resources)
 
 ---
 
-## Philosophy and Core Concepts
+## Installation
 
-### Utility-First Methodology
+Requires Node.js 20 or higher. Tailwind v4 ships as separate packages per build system:
 
-Tailwind CSS embraces a **utility-first approach** that fundamentally differs from traditional CSS frameworks. Rather than predefined components, developers combine single-purpose presentational classes directly in markup to construct interfaces.
+- `tailwindcss` — core
+- `@tailwindcss/vite` — Vite plugin
+- `@tailwindcss/postcss` — PostCSS plugin (in v3 the `tailwindcss` package itself was the PostCSS plugin; that moved here)
+- `@tailwindcss/cli` — standalone CLI
 
-**Key Principle**: Write HTML with utility classes instead of writing custom CSS.
-
-```html
-<!-- Traditional CSS approach -->
-<button class="btn-primary">Save</button>
-
-<!-- Tailwind utility-first approach -->
-<button class="bg-sky-500 hover:bg-sky-700 px-4 py-2 rounded text-white">
-  Save
-</button>
-```
-
-### How Tailwind Works
-
-The framework generates CSS dynamically by **scanning project files** for class names. When you write markup containing utility classes like `flex`, `p-6`, or `bg-white`, Tailwind creates only the necessary CSS—eliminating unused styles from the final bundle.
-
-This results in:
-- **Small CSS bundles**: Only used utilities are included
-- **Fast builds**: Efficient scanning and generation
-- **Zero runtime**: Pure CSS output with no JavaScript overhead
-
-### Core Benefits
-
-1. **Development Speed**: No CSS file switching or class naming decisions required
-2. **Safety**: Modifying classes only affects that specific element, preventing cascading breaks
-3. **Maintenance**: Changes are localized to visible markup
-4. **Portability**: Complete styling context moves with HTML chunks
-5. **Scalability**: CSS doesn't grow linearly; utilities are maximally reusable
-
-### Utilities vs Inline Styles
-
-Unlike inline styles, utilities offer:
-
-- **Design constraints** from predefined theme variables
-  - Inline: `style="padding: 13px"` (arbitrary)
-  - Tailwind: `class="p-4"` (from spacing scale)
-
-- **State support** (hover, focus, active states)
-  - Inline: Requires JavaScript
-  - Tailwind: `hover:bg-blue-600 focus:ring-2`
-
-- **Responsive capabilities** via breakpoint prefixes
-  - Inline: Requires media queries
-  - Tailwind: `md:text-lg lg:text-xl`
-
----
-
-## Installation and Setup
-
-### System Requirements
-
-- Node.js 14.x or higher
-- npm, yarn, or pnpm package manager
-- Modern build tool (Vite recommended)
-
-### Installation Methods
-
-Tailwind v4 offers several installation approaches:
-
-1. **Using Vite** (recommended for modern frameworks)
-2. Using PostCSS
-3. Tailwind CLI
-4. Framework-specific guides
-5. Play CDN (prototyping only):
-   ```html
-   <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
-   ```
-   NEVER use `cdn.tailwindcss.com` — it only serves Tailwind v3.
-
-### Vite Installation (Recommended)
-
-**Step 1: Create Project**
-```bash
-npm create vite@latest my-project
-cd my-project
-```
-
-**Step 2: Install Dependencies**
-```bash
-npm install tailwindcss @tailwindcss/vite
-```
-
-**Step 3: Configure Vite Plugin**
-
-Add to `vite.config.ts`:
+**Vite (recommended):**
 ```typescript
+// vite.config.ts
 import tailwindcss from '@tailwindcss/vite'
 import { defineConfig } from 'vite'
 
@@ -116,781 +41,216 @@ export default defineConfig({
 })
 ```
 
-**Step 4: Import Tailwind CSS**
-
-Add to your main CSS file (e.g., `src/index.css`):
+Then import Tailwind in your main CSS file — this single line replaces v3's `@tailwind base/components/utilities`:
 ```css
 @import "tailwindcss";
 ```
 
-**Step 5: Run Development Server**
-```bash
-npm run dev
-```
+**PostCSS** uses `@tailwindcss/postcss` in `postcss.config.js`; **CLI** runs `npx @tailwindcss/cli -i input.css -o output.css --watch`.
 
-**Step 6: Use Utility Classes**
+**Play CDN (prototyping only):**
 ```html
-<h1 class="text-3xl font-bold underline">
-  Hello world!
-</h1>
+<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
 ```
-
-### PostCSS Installation
-
-**Install dependencies:**
-```bash
-npm install tailwindcss @tailwindcss/postcss
-```
-
-**Configure PostCSS** (`postcss.config.js`):
-```javascript
-module.exports = {
-  plugins: {
-    '@tailwindcss/postcss': {}
-  }
-}
-```
-
-**Import in CSS:**
-```css
-@import "tailwindcss";
-```
-
-### Tailwind CLI
-
-**Install globally or locally:**
-```bash
-npm install -D tailwindcss
-```
-
-**Build CSS:**
-```bash
-npx tailwindcss -i ./src/input.css -o ./dist/output.css --watch
-```
+NEVER use `cdn.tailwindcss.com` — it only serves Tailwind v3.
 
 ---
 
-## Utility-First Fundamentals
+## Arbitrary Values and Escapes
 
-### Key Syntax Patterns
-
-#### Basic Utilities
-
-Utilities follow a consistent naming pattern:
+When the theme lacks a value, use square-bracket notation (use sparingly — see [Common Pitfalls](#common-pitfalls)):
 
 ```html
-<!-- Layout -->
-<div class="flex items-center justify-between">
-
-<!-- Spacing -->
-<div class="p-6 m-4">
-
-<!-- Typography -->
-<h1 class="text-2xl font-bold text-gray-900">
-
-<!-- Colors -->
-<div class="bg-white text-black border border-gray-200">
+<div class="bg-[#316ff6]">                          <!-- arbitrary value -->
+<div class="top-[117px] grid-cols-[24rem_2.5rem_minmax(0,1fr)]">
+<div class="[mask-type:luminance] hover:[mask-type:alpha]"> <!-- arbitrary property -->
+<div class="[&:nth-child(3)]:py-0 [&_p]:mt-4">      <!-- arbitrary variant -->
+<div class="[@media(width>=800px)]:text-center">   <!-- arbitrary media query -->
 ```
 
-#### State Variants
-
-Apply styles conditionally using prefixes:
-
+Reference a CSS variable as a value with parentheses (shorthand for `[var(--...)]`):
 ```html
-<!-- Hover states -->
-<button class="bg-blue-500 hover:bg-blue-700">
-
-<!-- Focus states -->
-<input class="border border-gray-300 focus:border-blue-500 focus:ring-2">
-
-<!-- Dark mode -->
-<div class="bg-white dark:bg-gray-900">
-
-<!-- Responsive -->
-<div class="text-sm md:text-base lg:text-lg">
+<div class="bg-(--brand) w-(--sidebar-width)">
 ```
 
-#### Composition
-
-Multiple effects can be applied to single properties using CSS variables:
-
-```html
-<img class="blur-sm grayscale" src="...">
-```
-
-Tailwind handles layering automatically, preventing conflicts.
-
-#### Arbitrary Values
-
-Extend beyond predefined themes using square bracket notation:
-
-```html
-<!-- Custom colors -->
-<div class="bg-[#316ff6]">
-
-<!-- Custom spacing -->
-<div class="top-[117px] left-[344px]">
-
-<!-- Custom grid -->
-<div class="grid-cols-[24rem_2.5rem_minmax(0,1fr)]">
-
-<!-- Custom content -->
-<div class="before:content-['Hello_World']">
-```
-
-**Escaping characters:**
-- Use underscores for spaces: `content-['Hello_World']`
-- Use backslashes for special characters: `content-['\2022']`
-
-#### Arbitrary Properties
-
-Use arbitrary CSS properties not covered by utilities:
-
-```html
-<!-- CSS property with value -->
-<div class="[mask-type:luminance]">
-
-<!-- With modifiers -->
-<div class="hover:[mask-type:alpha]">
-```
-
-#### Arbitrary Variants
-
-Create one-off variants:
-
-```html
-<!-- Custom selector -->
-<div class="[&:nth-child(3)]:py-0">
-
-<!-- Custom media query -->
-<div class="[@media(width>=800px)]:text-center">
-
-<!-- Target children -->
-<div class="[&_p]:mt-4">
-```
-
-### Managing Conflicts
-
-When utility classes conflict, **later stylesheet order wins**. The recommended approach is preventing conflicts through conditional logic rather than using `!important`:
-
-```html
-<!-- BAD: Using !important -->
-<div class="text-red-500 !text-blue-500">
-
-<!-- GOOD: Conditional rendering -->
-<div class={isActive ? "text-blue-500" : "text-red-500"}>
-```
+**Escaping:** underscores become spaces (`content-['Hello_World']`); backslash-escape special characters (`content-['\2022']`).
 
 ---
 
 ## Responsive Design
 
-### Mobile-First Breakpoint System
+Tailwind is **mobile-first**: unprefixed utilities apply at all sizes; a breakpoint prefix applies at that width **and up**. Write base styles unprefixed and layer larger breakpoints on top — never use `sm:` to mean "mobile."
 
-Tailwind uses a **mobile-first approach** where:
-- **Unprefixed utilities** apply to all screen sizes
-- **Prefixed utilities** apply at specified breakpoints and above
-
-**CRITICAL**: Use unprefixed classes for mobile styles, NOT `sm:` prefixes.
-
-### Default Breakpoints
-
-| Prefix | Minimum Width | CSS Media Query |
-|--------|---------------|-----------------|
+| Prefix | Min width | Media query |
+|--------|-----------|-------------|
 | `sm` | 40rem (640px) | `@media (width >= 40rem)` |
 | `md` | 48rem (768px) | `@media (width >= 48rem)` |
 | `lg` | 64rem (1024px) | `@media (width >= 64rem)` |
 | `xl` | 80rem (1280px) | `@media (width >= 80rem)` |
 | `2xl` | 96rem (1536px) | `@media (width >= 96rem)` |
 
-### Usage Examples
-
 ```html
-<!-- Mobile: 16 units, Tablet: 32 units, Desktop: 48 units -->
-<img class="w-16 md:w-32 lg:w-48" src="...">
-
-<!-- Mobile: center, Tablet+: left align -->
-<div class="text-center sm:text-left">
-
-<!-- Mobile: block, Desktop: flex -->
-<div class="block lg:flex">
-```
-
-### Common Patterns
-
-**Stack to row layout:**
-```html
-<div class="flex flex-col md:flex-row">
-  <div class="w-full md:w-1/2">Column 1</div>
-  <div class="w-full md:w-1/2">Column 2</div>
-</div>
-```
-
-**Responsive grid:**
-```html
-<!-- Mobile: 1 col, Tablet: 2 cols, Desktop: 3 cols -->
+<img class="w-16 md:w-32 lg:w-48">
 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+<div class="flex flex-col md:flex-row">
 ```
 
-**Responsive spacing:**
+**Breakpoint ranges** — combine with `max-*` to bound on both sides:
 ```html
-<div class="p-4 md:p-6 lg:p-8">
+<div class="md:max-xl:flex">          <!-- md through xl only -->
+<div class="block lg:max-2xl:hidden">  <!-- hidden lg to 2xl -->
 ```
 
-### Advanced Responsive Features
-
-#### Targeting Breakpoint Ranges
-
-Combine responsive variants with `max-*` variants:
-
+**One-off breakpoints:**
 ```html
-<!-- Applies only from md to xl -->
-<div class="md:max-xl:flex">
-
-<!-- Mobile and tablet only (not desktop) -->
-<div class="block lg:max-2xl:hidden">
+<div class="max-[600px]:bg-sky-300 min-[320px]:text-center">
 ```
 
-#### Custom Breakpoints
+Custom named breakpoints are defined in `@theme` — see [CSS-First Customization](#css-first-customization).
 
-Define custom breakpoints via theme variables:
+---
 
-```css
-@theme {
-  --breakpoint-xs: 30rem;
-  --breakpoint-3xl: 120rem;
-}
-```
+## Container Queries
+
+Style elements by their **container's** size rather than the viewport. Mark an ancestor `@container`, then use `@`-prefixed variants on descendants:
 
 ```html
-<div class="xs:text-sm 3xl:text-2xl">
-```
-
-#### Arbitrary Breakpoints
-
-Use one-off breakpoints:
-
-```html
-<!-- Max-width breakpoint -->
-<div class="max-[600px]:bg-sky-300">
-
-<!-- Min-width breakpoint -->
-<div class="min-[320px]:text-center">
-
-<!-- Height-based breakpoint -->
-<div class="min-h-[800px]:pt-12">
-```
-
-### Container Queries
-
-Modern alternative to viewport-based breakpoints. Style elements based on their **container's size** rather than viewport width.
-
-**Setup:**
-```html
-<!-- Mark container -->
 <div class="@container">
-  <!-- Style children based on container size -->
-  <div class="@lg:text-xl @2xl:text-3xl">
-    Responsive to container
-  </div>
+  <div class="@md:flex @lg:text-xl @2xl:text-3xl">Responsive to container</div>
 </div>
 ```
 
-**Container query breakpoints:**
-- `@sm` - 24rem (384px)
-- `@md` - 28rem (448px)
-- `@lg` - 32rem (512px)
-- `@xl` - 36rem (576px)
-- `@2xl` - 42rem (672px)
-- `@3xl` - 48rem (768px)
-- `@4xl` - 56rem (896px)
-- `@5xl` - 64rem (1024px)
-- `@6xl` - 72rem (1152px)
-- `@7xl` - 80rem (1280px)
+| Variant | Min width | | Variant | Min width |
+|---------|-----------|---|---------|-----------|
+| `@3xs` | 16rem (256px) | | `@xl` | 36rem (576px) |
+| `@2xs` | 18rem (288px) | | `@2xl` | 42rem (672px) |
+| `@xs` | 20rem (320px) | | `@3xl` | 48rem (768px) |
+| `@sm` | 24rem (384px) | | `@4xl` | 56rem (896px) |
+| `@md` | 28rem (448px) | | `@5xl` | 64rem (1024px) |
+| `@lg` | 32rem (512px) | | `@6xl` | 72rem (1152px) |
+|  |  | | `@7xl` | 80rem (1280px) |
 
-**Named containers:**
+Use `@max-md:` for max-width container queries, and name containers to target a specific ancestor:
 ```html
 <div class="@container/main">
   <div class="@lg/main:text-xl">
 ```
 
-**Size containers:**
-
-`@container` creates an inline-size container. Use `@container-size` when children need block-direction container query units (`cqb`, `cqh`):
-
-```html
-<div class="@container-size">
-  <div class="h-[50cqh]">Half the container's height</div>
-</div>
-```
+`@container` establishes an inline-size container. Use `@container-size` when children need block-direction container units (`cqb`, `cqh`).
 
 ---
 
 ## State Variants
 
-### Core Concept
+Variants prefix a utility to apply it conditionally. Stack them (read right-to-left: `dark:md:hover:bg-blue-500` = hover, at `md`+, in dark mode).
 
-Tailwind enables conditional styling through **variants** that prefix utility classes. Rather than modifying a single class for different states, you apply separate classes for each condition.
-
-### Interactive State Variants
-
-#### Mouse Interactions
-
+**Interactive:** `hover:` `active:` `focus:` `focus-visible:` `focus-within:`
 ```html
-<!-- Hover -->
-<button class="bg-violet-500 hover:bg-violet-600">
-
-<!-- Active (while pressed) -->
-<button class="bg-violet-500 active:bg-violet-700">
-```
-
-#### Focus States
-
-```html
-<!-- Focus (any method) -->
-<input class="border-gray-300 focus:border-blue-500">
-
-<!-- Focus-visible (keyboard only) -->
+<button class="bg-violet-500 hover:bg-violet-600 active:bg-violet-700">
 <button class="focus:outline-none focus-visible:ring-2">
+```
+Prefer `focus-visible:` over `focus:` for keyboard focus rings so they don't show on mouse clicks.
 
-<!-- Focus-within (element or descendants) -->
-<div class="focus-within:ring-2">
-  <input type="text">
-</div>
+**Form:** `disabled:` `required:` `invalid:` `valid:` `checked:` `indeterminate:` `read-only:` `placeholder-shown:` — plus `user-valid:` / `user-invalid:` which apply validation styling only after the user has interacted.
+```html
+<input class="disabled:opacity-50 invalid:border-pink-500 user-invalid:border-red-500">
+<input type="checkbox" class="checked:bg-blue-500 indeterminate:bg-gray-300">
 ```
 
-**Best Practice**: Use `focus-visible:` for keyboard navigation styling to avoid showing focus rings on mouse clicks.
-
-### Form State Variants
-
+**Structural:** `first:` `last:` `odd:` `even:` `empty:` `only:` `nth-[3]:` `nth-last-[2]:`
 ```html
-<!-- Disabled -->
-<input class="disabled:opacity-50 disabled:cursor-not-allowed">
-
-<!-- Required -->
-<input class="required:border-red-500">
-
-<!-- Invalid -->
-<input class="invalid:border-pink-500 focus:invalid:border-pink-500">
-
-<!-- Valid -->
-<input class="valid:border-green-500">
-
-<!-- Checked (checkbox/radio) -->
-<input type="checkbox" class="checked:bg-blue-500">
-
-<!-- Indeterminate -->
-<input type="checkbox" class="indeterminate:bg-gray-300">
-
-<!-- Read-only -->
-<input class="read-only:bg-gray-100">
-
-<!-- Placeholder shown -->
-<input class="placeholder-shown:border-gray-300">
-```
-
-### Structural Pseudo-Classes
-
-```html
-<!-- First/Last child -->
-<li class="first:pt-0 last:pb-0">
-
-<!-- Odd/Even children -->
 <tr class="odd:bg-white even:bg-gray-50">
-
-<!-- Specific positions -->
-<div class="nth-[3]:bg-red-500">
-<div class="nth-last-[2]:bg-blue-500">
-
-<!-- Empty elements -->
 <div class="empty:hidden">
-
-<!-- Only child -->
-<div class="only:mx-auto">
 ```
 
-### Parent and Sibling Styling
-
-#### Group Variants
-
-Mark parent with `group` class, style children based on parent state:
-
+**Group and peer** — style based on a parent or previous sibling's state. Mark the parent `group` (or a sibling `peer`), then use `group-*` / `peer-*`. Only *previous* siblings work with `peer` (CSS can't select earlier elements). Name them (`group/card`, `peer/email`) to disambiguate when nested:
 ```html
 <a href="#" class="group">
   <svg class="stroke-sky-500 group-hover:stroke-white"/>
-  <h3 class="text-gray-900 group-hover:text-white">New project</h3>
-  <p class="text-gray-500 group-hover:text-gray-300">Description</p>
+  <h3 class="group-hover:text-white">New project</h3>
 </a>
-```
 
-**Named groups** for nested scenarios:
-```html
-<div class="group/card">
-  <div class="group/title">
-    <h3 class="group-hover/card:text-blue-500 group-hover/title:underline">
-      Title
-    </h3>
-  </div>
-</div>
-```
-
-#### Peer Variants
-
-Mark sibling with `peer` class, style based on sibling state:
-
-```html
 <input type="email" class="peer" />
-<p class="invisible peer-invalid:visible text-red-500">
-  Invalid email address
-</p>
+<p class="invisible peer-invalid:visible">Invalid email</p>
 ```
 
-**Important**: Only **previous siblings** work due to CSS limitations (CSS can't select earlier elements).
-
-**Named peers:**
+**Pseudo-elements:** `before:` `after:` `placeholder:` `file:` `selection:` `first-line:` `first-letter:` `marker:`
 ```html
-<input type="text" class="peer/email" />
-<input type="text" class="peer/password" />
-<p class="peer-invalid/email:block">Email error</p>
-<p class="peer-invalid/password:block">Password error</p>
-```
-
-### Pseudo-Elements
-
-```html
-<!-- Before/After -->
-<label class="before:content-['$'] before:mr-1">
-  <span class="after:content-['*'] after:text-red-500">Required</span>
-</label>
-
-<!-- Placeholder -->
-<input class="placeholder:text-gray-400 placeholder:italic">
-
-<!-- File input button -->
+<span class="after:content-['*'] after:text-red-500">Required</span>
 <input type="file" class="file:mr-4 file:py-2 file:px-4 file:border-0">
-
-<!-- Selection -->
-<p class="selection:bg-fuchsia-300 selection:text-fuchsia-900">
-  Select this text
-</p>
-
-<!-- First line/letter -->
-<p class="first-line:uppercase first-line:tracking-widest">
-<p class="first-letter:text-7xl first-letter:font-bold">
-
-<!-- List marker -->
-<ul class="marker:text-sky-400">
-  <li>Item 1</li>
-</ul>
+<p class="selection:bg-fuchsia-300 first-letter:text-7xl">
 ```
 
-### Media and Feature Queries
-
+**Media / feature queries:** `motion-safe:` `motion-reduce:` `contrast-more:` `print:` `portrait:` `landscape:` `supports-[…]:` `noscript:` `inverted-colors:`, plus pointer-device targeting `pointer-fine:` / `pointer-coarse:` (and `any-pointer-*` for any attached device) and `details-content:` for `<details>` content.
 ```html
-<!-- Prefers reduced motion -->
 <button class="motion-safe:animate-spin motion-reduce:animate-none">
-
-<!-- Prefers contrast -->
-<button class="contrast-more:border-2">
-
-<!-- Supports -->
-<div class="supports-[display:grid]:grid">
-
-<!-- Print styles -->
-<div class="print:hidden">
-
-<!-- Portrait/Landscape -->
-<div class="portrait:hidden landscape:block">
+<div class="supports-[display:grid]:grid print:hidden">
+<fieldset class="pointer-coarse:grid-cols-3 pointer-fine:grid-cols-6">
+<div class="hidden noscript:block">Please enable JavaScript</div>
 ```
 
-### Stacking Variants
-
-Combine multiple variants for complex conditions:
-
-```html
-<!-- Dark mode + hover + medium breakpoint -->
-<div class="dark:md:hover:bg-fuchsia-600">
-
-<!-- Group hover + dark mode -->
-<div class="group-hover:dark:text-white">
-
-<!-- Peer checked + disabled -->
-<div class="peer-checked:disabled:opacity-50">
-```
-
-**Variant order** (from right to left):
-```
-dark:md:hover:bg-blue-500
-  │   │   │
-  │   │   └─ hover: interaction state
-  │   └───── md: responsive breakpoint
-  └───────── dark: color scheme
-```
-
-### Best Practices
-
-1. **Use utilities directly on elements** when possible instead of pseudo-elements
-2. **Leverage `group` and `peer`** to reduce conditional template logic
-3. **Prefer `focus-visible:`** over `focus:` for keyboard navigation styling
-4. **Stack variants intelligently**: `dark:md:hover:bg-fuchsia-600`
-5. **Use `not-` variants** for inverse conditions: `not-focus:hover:opacity-50`
+Use `not-*` for inverse conditions: `not-focus:hover:opacity-50`.
 
 ---
 
 ## Dark Mode
 
-### Overview
-
-Tailwind includes a `dark:` variant as a **first-class feature** for styling sites differently when dark mode is activated.
-
-### Default Implementation (Prefers Color Scheme)
-
-By default, dark mode uses the `prefers-color-scheme` CSS media feature, automatically detecting the user's system preference:
-
-```html
-<div class="bg-white dark:bg-gray-900">
-  <h1 class="text-gray-900 dark:text-white">
-    Hello World
-  </h1>
-</div>
-```
-
-No configuration needed—dark mode works out of the box.
-
-### Manual Toggle (Class-Based)
-
-Override dark mode to use a CSS class for manual control:
-
-**Configure custom variant** in your CSS:
-```css
-@import "tailwindcss";
-
-@custom-variant dark (&:where(.dark, .dark *));
-```
-
-**Apply the class** to activate dark mode:
-```html
-<html class="dark">
-  <body>
-    <div class="bg-white dark:bg-black">
-      Dark mode active
-    </div>
-  </body>
-</html>
-```
-
-**Toggle with JavaScript:**
-```javascript
-// Enable dark mode
-document.documentElement.classList.add('dark')
-
-// Disable dark mode
-document.documentElement.classList.remove('dark')
-```
-
-### Data Attribute Approach
-
-Use a data attribute instead of a class:
-
-**Configure:**
-```css
-@custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *));
-```
-
-**Usage:**
-```html
-<html data-theme="dark">
-```
-
-**Toggle:**
-```javascript
-document.documentElement.dataset.theme = 'dark'
-```
-
-### Three-Way Toggle (Light/Dark/System)
-
-Support light, dark, and system preferences:
-
-```javascript
-// Check system preference
-const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
-
-// Get stored preference
-const storedTheme = localStorage.getItem('theme')
-
-// Apply theme
-function applyTheme(theme) {
-  if (theme === 'dark' || (theme === 'system' && prefersDark)) {
-    document.documentElement.classList.add('dark')
-  } else {
-    document.documentElement.classList.remove('dark')
-  }
-}
-
-// Listen for system changes
-window.matchMedia('(prefers-color-scheme: dark)')
-  .addEventListener('change', e => {
-    if (localStorage.getItem('theme') === 'system') {
-      applyTheme('system')
-    }
-  })
-```
-
-### Common Patterns
-
-**Background and text:**
+By default `dark:` follows `prefers-color-scheme` — no configuration needed:
 ```html
 <div class="bg-white dark:bg-gray-900 text-gray-900 dark:text-white">
 ```
 
-**Borders:**
-```html
-<div class="border border-gray-200 dark:border-gray-800">
+**Manual (class or data attribute) toggle** — override the `dark` variant in CSS:
+```css
+@import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
+/* or: @custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *)); */
+```
+```javascript
+document.documentElement.classList.toggle('dark')
 ```
 
-**Semantic colors:**
-```html
-<button class="bg-blue-500 hover:bg-blue-600 dark:bg-blue-600 dark:hover:bg-blue-700">
-```
+**Three-way (light / dark / system):** store the choice in `localStorage`, apply the `dark` class when stored value is `dark` or (`system` and the media query matches), and listen for `prefers-color-scheme` changes to re-apply while on `system`.
 
-**Images:**
+**Image swaps:**
 ```html
-<!-- Show different images -->
 <img class="block dark:hidden" src="logo-light.png">
 <img class="hidden dark:block" src="logo-dark.png">
-
-<!-- Adjust image opacity -->
-<img class="dark:opacity-80" src="...">
 ```
 
-**Combining with other variants:**
-```html
-<button class="bg-blue-500 hover:bg-blue-600 dark:bg-blue-600 dark:hover:bg-blue-700">
-```
-
-### Best Practices
-
-1. **Test both modes** during development
-2. **Ensure sufficient contrast** in both themes (WCAG AA: 4.5:1)
-3. **Use semantic color names** that work in both modes
-4. **Consider images and icons**—they may need adjustments
-5. **Provide manual toggle** for better user experience
-6. **Store preference** in localStorage to persist across sessions
+Test both themes and ensure contrast holds in each (see [Accessibility](#accessibility)).
 
 ---
 
-## Customization
+## CSS-First Customization
 
-### Theme Customization with @theme
+Tailwind v4 has no `tailwind.config.js`. Configure the design system in CSS with `@theme`, which defines tokens as CSS variables. Each token namespace (`--color-*`, `--spacing-*`, `--font-*`, `--breakpoint-*`, `--shadow-*`, etc.) generates the corresponding utilities.
 
-Tailwind v4 uses the **`@theme` directive** to customize design tokens via CSS variables.
-
-**Basic structure:**
 ```css
 @import "tailwindcss";
 
 @theme {
-  /* Define custom design tokens here */
-}
-```
-
-### Customizing Colors
-
-```css
-@theme {
-  /* Brand colors */
-  --color-brand-50: oklch(0.98 0.01 250);
-  --color-brand-100: oklch(0.95 0.03 250);
+  /* Colors — generates bg-brand-500, text-brand-500, etc. */
   --color-brand-500: oklch(0.60 0.20 250);
   --color-brand-900: oklch(0.25 0.15 250);
-
-  /* Semantic colors */
   --color-primary: var(--color-brand-500);
-  --color-success: oklch(0.70 0.15 145);
-  --color-danger: oklch(0.65 0.25 25);
-}
-```
 
-```html
-<div class="bg-brand-500 text-white">
-<button class="bg-primary hover:bg-brand-600">
-```
-
-### Customizing Spacing
-
-```css
-@theme {
-  /* Custom spacing scale */
+  /* Spacing — --spacing is the base unit multiplied across the scale */
+  --spacing: 0.25rem;
   --spacing-18: 4.5rem;
-  --spacing-72: 18rem;
 
-  /* Functional spacing */
-  --spacing: 0.25rem; /* Base unit */
-}
-```
-
-```html
-<div class="p-18 m-72">
-```
-
-### Customizing Typography
-
-```css
-@theme {
-  /* Font families */
+  /* Typography — font families, sizes, weights */
   --font-display: 'Lato', system-ui, sans-serif;
-  --font-body: 'Inter', system-ui, sans-serif;
-  --font-mono: 'Fira Code', monospace;
-
-  /* Font sizes */
   --text-2xs: 0.625rem;
-  --text-3xs: 0.5rem;
-
-  /* Font weights */
-  --font-medium: 550;
   --font-extra-bold: 850;
-}
-```
 
-```html
-<h1 class="font-display text-3xl font-extra-bold">
-<p class="font-body text-base">
-<code class="font-mono text-2xs">
-```
-
-### Customizing Breakpoints
-
-```css
-@theme {
+  /* Custom named breakpoints — generates xs: and 3xl: variants */
   --breakpoint-xs: 30rem;
   --breakpoint-3xl: 120rem;
-}
-```
 
-```html
-<div class="xs:text-sm 3xl:text-2xl">
-```
-
-### Customizing Shadows
-
-```css
-@theme {
-  --shadow-glow: 0 0 20px rgba(59, 130, 246, 0.5);
-  --shadow-brutal: 4px 4px 0 0 black;
-}
-```
-
-```html
-<div class="shadow-glow">
-<div class="shadow-brutal">
-```
-
-### Customizing Animation
-
-```css
-@theme {
+  /* Shadows and animation */
+  --shadow-glow: 0 0 20px rgb(59 130 246 / 0.5);
   --ease-bounce: cubic-bezier(0.68, -0.55, 0.265, 1.55);
-
   --animate-slide-in: slide-in 0.5s var(--ease-bounce);
 }
 
@@ -900,656 +260,185 @@ Tailwind v4 uses the **`@theme` directive** to customize design tokens via CSS v
 }
 ```
 
-```html
-<div class="animate-slide-in">
-```
-
-### Referencing Theme Values
-
-Use CSS variables directly in custom CSS:
-
+Every theme value is also a plain CSS variable, usable directly in custom CSS:
 ```css
-.custom-component {
-  background-color: var(--color-brand-500);
-  padding: var(--spacing-4);
-  font-family: var(--font-display);
-}
+.custom { background: var(--color-brand-500); padding: var(--spacing-4); }
 ```
 
 ---
 
-## Reusing Styles
+## Directives
 
-### Managing Duplication
+**`@import "tailwindcss";`** — inlines Tailwind (and any other CSS files you import).
 
-Tailwind provides several strategies for reusing styles across your project.
+**`@theme { … }`** — defines design tokens; see [CSS-First Customization](#css-first-customization).
 
-### 1. Using Loops (Preferred)
-
-The most common scenario involves rendering duplicate elements through code loops. Author the markup once within a loop structure:
-
-```jsx
-// React example
-{items.map(item => (
-  <div key={item.id} class="bg-white rounded-lg shadow-md p-6">
-    <h3 class="text-lg font-bold text-gray-900">{item.title}</h3>
-    <p class="text-gray-600">{item.description}</p>
-  </div>
-))}
-```
-
-```erb
-<!-- Ruby ERB example -->
-<% @items.each do |item| %>
-  <div class="bg-white rounded-lg shadow-md p-6">
-    <h3 class="text-lg font-bold text-gray-900"><%= item.title %></h3>
-    <p class="text-gray-600"><%= item.description %></p>
-  </div>
-<% end %>
-```
-
-### 2. Multi-Cursor Editing
-
-When duplicated class lists appear in a single file, use multi-cursor editing to select and edit the class list for each element simultaneously.
-
-**VS Code**: `Cmd/Ctrl + D` to select next occurrence
-
-```html
-<!-- Select "bg-white p-6 rounded-lg" and edit all at once -->
-<div class="bg-white p-6 rounded-lg">...</div>
-<div class="bg-white p-6 rounded-lg">...</div>
-<div class="bg-white p-6 rounded-lg">...</div>
-```
-
-### 3. Component Abstraction (Recommended for Multiple Files)
-
-Create reusable components in your framework of choice:
-
-**React:**
-```jsx
-function Card({ title, children }) {
-  return (
-    <div class="bg-white rounded-lg shadow-md p-6">
-      <h3 class="text-lg font-bold text-gray-900">{title}</h3>
-      <div class="text-gray-600">{children}</div>
-    </div>
-  )
-}
-```
-
-**Vue:**
-```vue
-<template>
-  <div class="bg-white rounded-lg shadow-md p-6">
-    <h3 class="text-lg font-bold text-gray-900">{{ title }}</h3>
-    <div class="text-gray-600">
-      <slot />
-    </div>
-  </div>
-</template>
-```
-
-**Template Partials** (Blade, ERB, Twig, Nunjucks):
-```erb
-<!-- _card.html.erb -->
-<div class="bg-white rounded-lg shadow-md p-6">
-  <h3 class="text-lg font-bold text-gray-900"><%= title %></h3>
-  <div class="text-gray-600"><%= yield %></div>
-</div>
-
-<!-- Usage -->
-<%= render 'card', title: 'Card Title' do %>
-  Card content here
-<% end %>
-```
-
-### 4. Custom CSS with @layer
-
-When component abstractions feel excessive, write custom CSS using `@layer components`:
-
+**`@layer base | components | utilities`** — organizes custom CSS by cascade layer (specificity increases base → components → utilities):
 ```css
-@layer components {
-  .btn-primary {
-    @apply bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 px-4 rounded;
-  }
-
-  .card {
-    @apply bg-white rounded-lg shadow-md p-6;
-  }
-}
+@layer base { h1 { @apply text-3xl font-bold; } }
+@layer components { .btn { @apply px-4 py-2 rounded font-semibold; } }
+@layer utilities { .content-auto { content-visibility: auto; } }
 ```
 
-**When to use `@layer components`:**
-- Semantic class names needed for templating languages
-- Third-party library overrides
-- Component patterns too simple for framework components
+**`@apply`** — inlines existing utilities into custom CSS. Use it for third-party overrides, semantic class names required by a CMS/templating language, or base element styles. Do NOT use it as the default styling approach or merely to make markup look "cleaner" — that defeats the utility-first model. Prefer components (React/Vue/partials) or loops for reuse.
 
-**When NOT to use it:**
-- Default approach—prefer inline utilities
-- Only to reduce "visual clutter"
-- Early abstraction before patterns emerge
-
-### 5. Extracting Base Styles
-
-Use `@layer base` for global element defaults:
-
-```css
-@layer base {
-  h1 {
-    @apply text-3xl font-bold;
-  }
-
-  h2 {
-    @apply text-2xl font-semibold;
-  }
-
-  a {
-    @apply text-blue-600 hover:text-blue-800 underline;
-  }
-}
-```
-
-**Warning**: This removes Tailwind's "blank slate" philosophy. Only use for content-heavy sites (blogs, documentation) where semantic HTML is critical.
-
----
-
-## Directives and Functions
-
-### Key Directives
-
-#### @import
-
-Inlines CSS files and Tailwind itself into your project:
-
-```css
-@import "tailwindcss";
-@import "./custom-base.css";
-@import "./custom-components.css";
-```
-
-#### @theme
-
-Defines custom design tokens using CSS variables:
-
-```css
-@theme {
-  --color-primary: oklch(0.60 0.20 250);
-  --spacing-18: 4.5rem;
-  --font-display: 'Lato', system-ui, sans-serif;
-}
-```
-
-#### @layer
-
-Organizes custom CSS into Tailwind's layers:
-
-```css
-/* Base layer - element defaults */
-@layer base {
-  h1 {
-    @apply text-3xl font-bold;
-  }
-}
-
-/* Components layer - reusable classes */
-@layer components {
-  .btn {
-    @apply px-4 py-2 rounded font-semibold;
-  }
-}
-
-/* Utilities layer - utility classes */
-@layer utilities {
-  .content-auto {
-    content-visibility: auto;
-  }
-}
-```
-
-**Layer order** (specificity):
-1. `base` (lowest specificity)
-2. `components`
-3. `utilities` (highest specificity)
-
-#### @apply
-
-Inlines existing utility classes into custom CSS:
-
-```css
-.btn-primary {
-  @apply bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 px-4 rounded;
-}
-```
-
-**When to use:**
-- Third-party library overrides
-- Component classes in templating languages
-- Semantic class names for content editors
-
-**When NOT to use:**
-- Default styling approach (use inline utilities)
-- Premature abstraction
-- "Cleaner HTML" (defeats utility-first benefits)
-
-#### @utility
-
-Registers custom utilities that respond to variants:
-
-```css
-@utility tab-* {
-  tab-size: *;
-}
-
-@utility content-* {
-  content-visibility: *;
-}
-```
-
-```html
-<pre class="tab-4 hover:tab-8">
-<div class="content-auto">
-```
-
-Use `--default(...)` to make a functional utility usable with or without a value:
-
+**`@utility name-* { … }`** — registers custom utilities that respond to variants. Use `--value(...)` for functional values and `--default(...)` for a valueless fallback:
 ```css
 @utility tab-* {
   tab-size: --value(integer, --default(4));
 }
-```
-
-```html
-<pre class="tab">      <!-- defaults to 4 -->
-<pre class="tab-8">
-```
-
-**Advanced custom utilities:**
-```css
-/* Functional utility */
-@utility mask-image-* {
-  mask-image: linear-gradient(*, black, transparent);
-}
-
-/* With nested selectors */
 @utility interactive {
   cursor: pointer;
-  user-select: none;
-
-  &:hover {
-    opacity: 0.8;
-  }
+  &:hover { opacity: 0.8; }
 }
 ```
 
-#### @variant
-
-Applies Tailwind variants to custom CSS:
-
+**`@variant name { … }`** — applies a Tailwind variant inside custom CSS. Stack with `:` (both must match) or list with `,` (either matches):
 ```css
-.custom-element {
-  @variant dark {
-    background-color: black;
-  }
-
-  @variant hover {
-    opacity: 0.8;
-  }
-
-  /* Stacked: applies when both match */
-  @variant hover:focus {
-    outline: 2px solid currentColor;
-  }
-
-  /* Compound: applies when either matches */
-  @variant hover, focus {
-    background: var(--color-blue-50);
-  }
+.button {
+  @variant dark { background: black; }
+  @variant hover:focus { outline: 2px solid currentColor; }  /* both */
+  @variant hover, focus { background: var(--color-blue-50); } /* either */
 }
 ```
 
-```html
-<div class="custom-element dark:custom-element hover:custom-element">
-```
-
-#### @custom-variant
-
-Creates project-specific variants:
-
+**`@custom-variant name (…)`** — defines a project-specific variant:
 ```css
-/* Data attribute variant */
 @custom-variant theme-midnight (&:where([data-theme=midnight], [data-theme=midnight] *));
-
-/* Media query variant */
 @custom-variant reduced-motion (@media (prefers-reduced-motion: reduce));
-
-/* Attribute selector variant */
-@custom-variant optional (&:optional);
 ```
 
-```html
-<div class="theme-midnight:bg-black">
-<div class="reduced-motion:transition-none">
-<input class="optional:border-gray-300">
-```
+**`@source "…"`** — explicitly add files to content detection when auto-scanning misses them (e.g. an external component library). `@source not "…"` excludes paths; `@source inline("…")` force-generates specific classes (a safelist).
 
-#### @source
-
-Explicitly specifies source files for content detection:
-
-```css
-@import "tailwindcss";
-
-@source "../../node_modules/my-ui-library/components/**/*.tsx";
-```
-
-Useful when automatic scanning doesn't cover external libraries.
-
-#### @reference
-
-Imports theme variables and utilities into component styles without duplicating CSS output:
-
+**`@reference "tailwindcss";`** — makes theme variables and utilities available to a scoped/isolated stylesheet (e.g. a Vue `<style scoped>` block or CSS module) without duplicating Tailwind's output:
 ```vue
 <style scoped>
 @reference "tailwindcss";
-
-.custom-class {
-  color: var(--color-blue-500);
-  padding: var(--spacing-4);
-}
+.custom { color: var(--color-blue-500); }
 </style>
-```
-
-### Build-Time Functions
-
-#### --alpha()
-
-Adjusts color opacity using `color-mix()`:
-
-```css
-.semi-transparent {
-  background-color: color-mix(in oklab, var(--color-blue-500) var(--alpha, 100%), transparent);
-}
-```
-
-```html
-<div class="bg-blue-500/50"> <!-- 50% opacity -->
-```
-
-#### --spacing()
-
-Generates spacing values based on theme:
-
-```css
-.custom-spacing {
-  margin: calc(var(--spacing) * 6); /* 1.5rem if --spacing is 0.25rem */
-}
 ```
 
 ---
 
-## Best Practices
+## Functions
 
-### General Principles
-
-1. **Start with utilities in markup** - Don't prematurely extract to custom CSS
-2. **Use design tokens** - Stick to theme values for consistency
-3. **Mobile-first responsive design** - Base styles without prefixes, add `md:`, `lg:` as needed
-4. **Leverage composition** - Combine utilities instead of writing custom CSS
-5. **Create components when needed** - Extract to framework components for true reusability
-
-### When to Use Different Approaches
-
-**Inline utilities** (default):
-```html
-<button class="bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 px-4 rounded">
-```
-✅ Most cases
-✅ One-off elements
-✅ Rapid prototyping
-
-**Loops** (preferred for duplication):
-```jsx
-{items.map(item => <Card key={item.id} {...item} />)}
-```
-✅ Lists and repeated elements
-✅ Dynamic content
-
-**Component abstraction**:
-```jsx
-function Button({ variant, children }) { ... }
-```
-✅ Used across multiple files
-✅ Complex composition patterns
-✅ Shared with team
-
-**Custom CSS with `@layer`**:
+**`--alpha(color / opacity)`** — adjusts a color's opacity in custom CSS:
 ```css
-@layer components {
-  .prose { ... }
-}
+.overlay { background: --alpha(var(--color-black) / 50%); }
 ```
-✅ Third-party overrides
-✅ Semantic class names for CMS
-✅ Base element styles
-⚠️ Use sparingly
+In markup, the `/` opacity modifier does the same: `bg-black/50`, `text-blue-500/75`.
 
-### Color Contrast
-
-Always ensure WCAG compliance:
-- **WCAG AA**: 4.5:1 for normal text, 3:1 for large text
-- **WCAG AAA**: 7:1 for normal text, 4.5:1 for large text
-
-Test with tools:
-- [WebAIM Contrast Checker](https://webaim.org/resources/contrastchecker/)
-- Browser DevTools accessibility panel
-
-### Performance
-
-1. **Purge unused styles** - Tailwind does this automatically via content scanning
-2. **Use arbitrary values sparingly** - They increase CSS bundle size
-3. **Prefer utilities over custom CSS** - Better reusability and smaller bundles
-4. **Minify in production** - Use build tools to compress output CSS
-
-### Accessibility
-
-1. **Use semantic HTML** - `<button>`, `<nav>`, `<main>`, not `<div>` with click handlers
-2. **Include focus states** - Always style `focus:` and `focus-visible:`
-3. **Provide ARIA labels** - Use `aria-label`, `aria-describedby` where needed
-4. **Keyboard navigation** - Ensure interactive elements are keyboard accessible
-5. **Screen reader text** - Use `sr-only` for icon-only buttons
-
-```html
-<!-- Good accessibility example -->
-<button
-  class="bg-blue-500 hover:bg-blue-600 focus-visible:ring-2 focus-visible:ring-blue-500
-         disabled:opacity-50 disabled:cursor-not-allowed"
-  aria-label="Save changes">
-  <svg class="w-5 h-5" aria-hidden="true">...</svg>
-  <span class="sr-only">Save changes</span>
-</button>
-```
-
-### Maintainability
-
-1. **Consistent naming** - Use theme variables instead of arbitrary values
-2. **Document patterns** - Comment complex utility combinations
-3. **Extract early patterns** - Once you use a combination 3+ times, consider extracting
-4. **Version control** - Commit theme customizations with code changes
-5. **Team conventions** - Establish utility ordering conventions (e.g., layout → spacing → typography → colors)
-
-### Common Pitfalls to Avoid
-
-❌ **Using `sm:` for mobile styles**
-```html
-<!-- WRONG -->
-<div class="sm:block"> <!-- Applies at 640px+, not mobile -->
-
-<!-- CORRECT -->
-<div class="block sm:hidden"> <!-- Visible on mobile, hidden on tablet+ -->
-```
-
-❌ **Overusing `@apply`**
+**`--spacing(n)`** — returns a value from the spacing scale (`n × --spacing`):
 ```css
-/* WRONG - Defeats utility-first benefits */
-.card {
-  @apply bg-white rounded-lg shadow-md p-6 border border-gray-200 hover:shadow-lg transition-shadow;
-}
-
-<!-- CORRECT - Use utilities directly -->
-<div class="bg-white rounded-lg shadow-md p-6 border border-gray-200 hover:shadow-lg transition-shadow">
+.custom { margin: --spacing(6); }   /* 1.5rem when --spacing is 0.25rem */
 ```
 
-❌ **Using `!important` utilities**
-```html
-<!-- WRONG -->
-<div class="text-red-500 !text-blue-500">
+---
 
-<!-- CORRECT -->
-<div class={isActive ? "text-blue-500" : "text-red-500"}>
+## Additional Utilities
+
+Utilities that are easy to overlook:
+
+- **Text shadow:** `text-shadow-2xs` `text-shadow-xs` `text-shadow-sm` `text-shadow-md` `text-shadow-lg`, colorable (`text-shadow-sky-300`) and with opacity (`text-shadow-lg/50`).
+- **Colored drop shadow:** `drop-shadow-<color>` and `drop-shadow-<color>/<opacity>`.
+- **Masks:** composable `mask-*` utilities — edge gradients (`mask-t-from-50%`, `mask-b-to-black`) and radial masks (`mask-radial-from-transparent`, `mask-radial-at-center`).
+- **Scrollbars:** width `scrollbar-thin` / `scrollbar-none` / `scrollbar-auto`, colors `scrollbar-thumb-*` / `scrollbar-track-*`, and `scrollbar-gutter-stable` / `-both` to prevent layout shift.
+- **Logical properties:** block/inline-relative spacing, sizing, and insets — e.g. `mbs-*`/`mbe-*` (margin block start/end), `pbs-*`/`pbe-*`, `block-*`/`inline-*` (sizing), `inset-s-*`/`inset-e-*`.
+- **Zoom:** `zoom-75` `zoom-100` `zoom-125`, arbitrary (`zoom-[1.1]`) and variable (`zoom-(--preview-zoom)`).
+- **Tab size:** `tab-2` `tab-4` `tab-8`, arbitrary and variable.
+- **Text wrapping:** `wrap-break-word` and `wrap-anywhere` for `overflow-wrap`.
+- **Safe alignment:** `justify-center-safe` / `items-center-safe` fall back to `start` when content overflows; `items-baseline-last` / `self-baseline-last` align to the last text baseline.
+
+---
+
+## Colors
+
+Tailwind's default palette uses the **OKLCH** color space (perceptually uniform, so shades read as evenly spaced across hues and behave predictably in both light and dark modes). Every color is a `--color-*` CSS variable:
+```css
+.custom { color: var(--color-blue-500); background: var(--color-slate-50); }
 ```
 
-❌ **Arbitrary values everywhere**
-```html
-<!-- WRONG - Creates bloated CSS -->
-<div class="w-[342px] h-[197px] text-[#3a5f7d]">
+The palette ships **26 color families**, each with 11 shades (`50`, `100`–`900` in hundreds, `950`).
 
-<!-- CORRECT - Use theme values -->
-<div class="w-80 h-48 text-blue-800">
-```
+**Chromatic (17):** `red` `orange` `amber` `yellow` `lime` `green` `emerald` `teal` `cyan` `sky` `blue` `indigo` `violet` `purple` `fuchsia` `pink` `rose`
+
+**Neutrals (9):** `slate` `gray` `zinc` `neutral` `stone` `mauve` `olive` `mist` `taupe`
+
+**Special:** `black` `white` `transparent` `current` `inherit`
+
+Shades: `50` is lightest, `500` the base tone, `950` darkest. Apply opacity with the `/` modifier: `bg-black/75`, `text-blue-500/50`.
 
 ---
 
 ## Quick Reference
 
-### Most Common Utilities
+**Layout:** `flex` `grid` `block` `inline-block` `hidden` `container` `mx-auto`
+**Flexbox:** `justify-{start|center|end|between|around}` `items-{start|center|end|stretch}` `flex-{row|col}` `flex-wrap`
+**Grid:** `grid-cols-{n}` `col-span-{n}` `gap-{size}` `gap-x-{size}` `gap-y-{size}`
+**Spacing:** `p-{size}` `px/py/pt/pr/pb/pl-{size}` `m-{size}` `mx/my/mt/mr/mb/ml-{size}`
+**Sizing:** `w-{size}` `h-{size}` `max-w-{size}` `min-h-{size}`
+**Typography:** `text-{size}` `font-{weight}` `leading-{height}` `text-{left|center|right}` `uppercase`
+**Colors:** `text-{color}-{shade}` `bg-{color}-{shade}` `border-{color}-{shade}`
+**Borders:** `border` `border-{size}` `border-{t|r|b|l}` `rounded` `rounded-{size}`
+**Effects:** `shadow-{size}` `opacity-{value}` `transition` `duration-{time}`
 
-**Layout:**
-- `flex`, `grid`, `block`, `inline-block`, `hidden`
-- `container`, `mx-auto`
+**Spacing scale:**
 
-**Flexbox:**
-- `justify-start/center/end/between/around`
-- `items-start/center/end/stretch`
-- `flex-row/col`, `flex-wrap`
+| Class | Value | | Class | Value |
+|-------|-------|---|-------|-------|
+| `0` | 0 | | `5` | 1.25rem (20px) |
+| `px` | 1px | | `6` | 1.5rem (24px) |
+| `0.5` | 0.125rem (2px) | | `8` | 2rem (32px) |
+| `1` | 0.25rem (4px) | | `10` | 2.5rem (40px) |
+| `2` | 0.5rem (8px) | | `12` | 3rem (48px) |
+| `3` | 0.75rem (12px) | | `16` | 4rem (64px) |
+| `4` | 1rem (16px) | | `24` | 6rem (96px) |
 
-**Grid:**
-- `grid-cols-{n}`, `col-span-{n}`
-- `gap-{size}`, `gap-x-{size}`, `gap-y-{size}`
+---
 
-**Spacing:**
-- `p-{size}`, `px-{size}`, `py-{size}`, `pt/pr/pb/pl-{size}`
-- `m-{size}`, `mx-{size}`, `my-{size}`, `mt/mr/mb/ml-{size}`
+## Common Pitfalls
 
-**Sizing:**
-- `w-{size}`, `h-{size}`
-- `max-w-{size}`, `min-h-{size}`
-
-**Typography:**
-- `text-{size}`, `font-{weight}`, `leading-{height}`
-- `text-left/center/right`, `uppercase/lowercase`
-
-**Colors:**
-- `text-{color}-{shade}`
-- `bg-{color}-{shade}`
-- `border-{color}-{shade}`
-
-**Borders:**
-- `border`, `border-{size}`, `border-t/r/b/l`
-- `rounded`, `rounded-{size}`, `rounded-t/r/b/l`
-
-**Effects:**
-- `shadow`, `shadow-{size}`
-- `opacity-{value}`
-- `transition`, `duration-{time}`
-
-### Spacing Scale
-
-| Class | Value |
-|-------|-------|
-| `0` | 0 |
-| `px` | 1px |
-| `0.5` | 0.125rem (2px) |
-| `1` | 0.25rem (4px) |
-| `2` | 0.5rem (8px) |
-| `3` | 0.75rem (12px) |
-| `4` | 1rem (16px) |
-| `5` | 1.25rem (20px) |
-| `6` | 1.5rem (24px) |
-| `8` | 2rem (32px) |
-| `10` | 2.5rem (40px) |
-| `12` | 3rem (48px) |
-| `16` | 4rem (64px) |
-| `20` | 5rem (80px) |
-| `24` | 6rem (96px) |
-
-### Default Color Palette
-
-Tailwind includes **22 color families** organized into chromatic colors and neutrals:
-
-**Chromatic Colors:**
-- `red`, `orange`, `amber`, `yellow`, `lime`, `green`, `emerald`
-- `teal`, `cyan`, `sky`, `blue`, `indigo`, `violet`, `purple`
-- `fuchsia`, `pink`, `rose`
-
-**Neutral Colors:**
-- `slate` - Cool gray with blue undertones
-- `gray` - True neutral gray
-- `zinc` - Cool gray with slightly less saturation than slate
-- `neutral` - Pure neutral gray
-- `stone` - Warm gray with brown undertones
-- `mauve` - Warm gray with violet undertones
-- `olive` - Warm gray with yellow-green undertones
-- `mist` - Cool gray with cyan undertones
-- `taupe` - Warm gray with red-brown undertones
-
-**Special Colors:**
-- `black`, `white`, `transparent`, `current`, `inherit`
-
-### Color Shade Scale
-
-Each color family contains **11 shade levels** (except special colors):
-
-- `50` - Lightest (near white)
-- `100`, `200`, `300`, `400` - Light shades
-- `500` - Base tone (default intensity)
-- `600`, `700`, `800`, `900` - Dark shades
-- `950` - Darkest (near black)
-
-**Usage examples:**
+**Using `sm:` for mobile styles.** `sm:` starts at 640px. Mobile styles are unprefixed.
 ```html
-<div class="bg-blue-500 text-white">         <!-- Base blue background -->
-<div class="bg-slate-50 text-slate-900">     <!-- Light slate background -->
-<div class="border-red-600 text-red-700">    <!-- Darker red border/text -->
+<div class="block sm:hidden">   <!-- shown on mobile, hidden at sm+ -->
 ```
 
-**Opacity modifiers:**
+**Overusing `@apply`.** It re-introduces the CSS you left behind. Keep utilities in markup; reach for components/loops when you need reuse.
 ```html
-<div class="bg-black/75">     <!-- 75% opacity -->
-<div class="text-blue-500/50"> <!-- 50% opacity -->
+<div class="bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow">
 ```
 
-### Color System
+**`!important` to win specificity.** Resolve the conflict in your logic instead of forcing it.
+```html
+<div class={isActive ? "text-blue-500" : "text-red-500"}>
+```
 
-Tailwind uses the **OKLCH color space**, a modern perceptually uniform format that ensures:
-- Consistent perceived brightness across all hues
-- Better color quality in both light and dark modes
-- More predictable color relationships
-- Improved accessibility through perceptual uniformity
-
-All colors are accessible via CSS variables in the `--color-*` namespace:
-```css
-.custom {
-  color: var(--color-blue-500);
-  background: var(--color-slate-50);
-}
+**Arbitrary values everywhere.** Each unique `[…]` value emits its own CSS and drifts from the design system. Prefer theme values; extend `@theme` when you need a new token.
+```html
+<div class="w-80 h-48 text-blue-800">   <!-- not w-[342px] text-[#3a5f7d] -->
 ```
 
 ---
 
-## Additional Resources
+## Accessibility
 
-- **Official Docs**: https://tailwindcss.com/docs
-- **GitHub**: https://github.com/tailwindlabs/tailwindcss
-- **Playground**: https://play.tailwindcss.com
-- **Component Libraries**: Tailwind UI, Headless UI, Tailwind Plus
-- **Community**: Discord, GitHub Discussions
+- Use semantic HTML (`<button>`, `<nav>`, `<main>`) over `<div>` with handlers.
+- Always provide a visible focus style; prefer `focus-visible:` (see [State Variants](#state-variants)).
+- Give icon-only controls an accessible name (`aria-label`) and `sr-only` text; mark decorative icons `aria-hidden="true"`.
+- Meet contrast targets in **both** light and dark modes: WCAG AA is 4.5:1 for normal text and 3:1 for large text (AAA: 7:1 / 4.5:1). Check with the [WebAIM contrast checker](https://webaim.org/resources/contrastchecker/).
+
+```html
+<button class="bg-blue-500 hover:bg-blue-600 focus-visible:ring-2 focus-visible:ring-blue-500
+               disabled:opacity-50" aria-label="Save changes">
+  <svg class="w-5 h-5" aria-hidden="true">...</svg>
+  <span class="sr-only">Save changes</span>
+</button>
+```
+
+---
+
+## Resources
+
+- Docs: https://tailwindcss.com/docs
+- Releases (source of truth for what's current): https://github.com/tailwindlabs/tailwindcss/releases
+- Playground: https://play.tailwindcss.com
