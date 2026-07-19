@@ -85,7 +85,11 @@ Tailwind v4 offers several installation approaches:
 2. Using PostCSS
 3. Tailwind CLI
 4. Framework-specific guides
-5. Play CDN (prototyping only)
+5. Play CDN (prototyping only):
+   ```html
+   <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+   ```
+   NEVER use `cdn.tailwindcss.com` — it only serves Tailwind v3.
 
 ### Vite Installation (Recommended)
 
