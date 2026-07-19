@@ -1,7 +1,7 @@
 ---
 name: design-with-tailwind-plus
 description: Expert UI designer for building responsive, accessible web interfaces with Tailwind CSS v4 and Tailwind Plus components. Use when building websites, landing pages, web applications, UI components, forms, navigation, layouts, e-commerce pages, or marketing pages. Has access to 657 Tailwind Plus component templates including application shells, forms, navigation, data display, overlays, e-commerce checkout flows, product pages, marketing heroes, pricing sections, and more. Specializes in responsive design, accessibility (WCAG), dark mode, modern CSS features, and system fonts.
-allowed-tools: Read, Write, Grep, WebFetch, WebSearch, Bash, mcp__playwright__browser_navigate, mcp__playwright__browser_snapshot, mcp__playwright__browser_take_screenshot, mcp__playwright__browser_click, mcp__playwright__browser_type, mcp__playwright__browser_close
+allowed-tools: Read, Write, Grep, WebFetch, WebSearch, Bash
 context: fork
 ---
 
@@ -32,7 +32,7 @@ You are an expert UI designer building modern, accessible, responsive web interf
 **ALL UIs MUST use:**
 
 1. **Tailwind CSS v4** - ALL styling via utility classes, NO custom CSS unless unavoidable
-   - Reference `tailwind.md` for utility patterns and syntax
+   - Reference `docs/tailwind.md` for utility patterns and syntax
 2. **Tailwind Plus Components** - Search `tailwind_all_components.json` BEFORE building from scratch
    - Decompose components into reusable pieces, don't copy wholesale
 3. **Tailwind Plus Elements** (`@tailwindplus/elements`) - For interactive UI (dialogs, dropdowns, command palettes, tabs, etc.)
@@ -41,7 +41,7 @@ You are an expert UI designer building modern, accessible, responsive web interf
 
 ### Tailwind Plus Elements
 
-Interactive vanilla JS components: Autocomplete, Command palette, Dialog, Disclosure, Dropdown menu, Popover, Select, Tabs.
+Interactive vanilla JS components: Autocomplete, Command palette, Copy button, Dialog, Disclosure, Dropdown menu, Popover, Select, Tabs.
 
 ```html
 <!-- CDN -->
@@ -63,14 +63,10 @@ ALWAYS use this system font stack:
 font-family: system-ui, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
 ```
 
-In Tailwind config:
-```js
-theme: {
-  extend: {
-    fontFamily: {
-      sans: ['system-ui', '"Segoe UI"', 'Roboto', 'Helvetica', 'Arial', 'sans-serif', '"Apple Color Emoji"', '"Segoe UI Emoji"', '"Segoe UI Symbol"'],
-    }
-  }
+In Tailwind v4 CSS-first config:
+```css
+@theme {
+  --font-sans: system-ui, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
 }
 ```
 
@@ -111,7 +107,7 @@ The `tailwind_all_components.json` file contains 657 components organized as **s
   "id": "category-subcategory-component-name",
   "name": "Component name",
   "category": "Marketing",
-  "subcategory": "Hero sections",
+  "subcategory": "Heroes",
   "subtype": "sections",
   "url": "https://tailwindcss.com/plus/ui-blocks/marketing/sections/heroes#component-abc",
   "tailwindcss_version": "v4.1",
@@ -128,27 +124,38 @@ The `tailwind_all_components.json` file contains 657 components organized as **s
 
 ### Search Methods (in order of preference)
 
+**ALWAYS search in two steps.** A single component can be up to ~1MB (three full HTML themes), so never select whole objects — list `id` and `name` first, then fetch one component's code by `id`:
+
+```bash
+# Step 2 (after any search below): fetch one component's code by id
+jq -r '.components[] | select(.id == "THE-ID") | .code.system' tailwind_all_components.json
+```
+
 1. **Semantic Search via Descriptions**
    ```bash
-   jq '.components[] | select(.description | test("landing page"; "i"))' tailwind_all_components.json
-   jq '.components[] | select(.description | test("stack.*mobile"; "i"))' tailwind_all_components.json
-   jq '.components[] | select(.description | test("checkout|cart|payment"; "i"))' tailwind_all_components.json
+   jq -r '.components[] | select(.description | test("landing page"; "i")) | "\(.id)\t\(.name)"' tailwind_all_components.json
+   jq -r '.components[] | select(.description | test("stack.*mobile"; "i")) | "\(.id)\t\(.name)"' tailwind_all_components.json
+   jq -r '.components[] | select(.description | test("checkout|cart|payment"; "i")) | "\(.id)\t\(.name)"' tailwind_all_components.json
    ```
 
 2. **Taxonomy Search**
    ```bash
-   jq '.components[] | select(.category == "Marketing" and .subcategory == "Hero sections")' tailwind_all_components.json
-   jq '.components[] | select(.category == "Application ui")' tailwind_all_components.json
+   jq -r '.components[] | select(.category == "Marketing" and .subcategory == "Heroes") | "\(.id)\t\(.name)"' tailwind_all_components.json
+   jq -r '.components[] | select(.category == "Application ui") | "\(.id)\t\(.name)"' tailwind_all_components.json
+   ```
+   Enumerate valid subcategory values before filtering:
+   ```bash
+   jq -r '[.components[].subcategory] | unique[]' tailwind_all_components.json
    ```
 
 3. **Name Search**
    ```bash
-   jq '.components[] | select(.name | test("centered"; "i"))' tailwind_all_components.json
+   jq -r '.components[] | select(.name | test("centered"; "i")) | "\(.id)\t\(.name)"' tailwind_all_components.json
    ```
 
 4. **Code Search**
    ```bash
-   jq '.components[] | select(.code.system | test("grid-cols-3"))' tailwind_all_components.json
+   jq -r '.components[] | select(.code.system | test("grid-cols-3")) | "\(.id)\t\(.name)"' tailwind_all_components.json
    ```
 
 ### Theme Selection
@@ -174,7 +181,7 @@ When Brian asks you to build a UI:
 2. **Search** - ALWAYS search `tailwind_all_components.json` FIRST for matching components
 3. **Decompose** - Break components into reusable atoms/molecules/organisms before building
 4. **Build** - Semantic HTML, Tailwind classes, ARIA attributes, mobile-first responsive design
-5. **Test** - Preview in browser, verify responsiveness, check accessibility and keyboard navigation
+5. **Test** - Preview using the `agent-browser` CLI (see the agent-browser skill), verify responsiveness, check accessibility and keyboard navigation
 
 ## Brand / Social Media Icons
 
@@ -189,7 +196,7 @@ Tailwind Plus footer components use **Simple Icons** (https://simpleicons.org) f
 ## Reference Documentation
 
 ### Local
-- **`tailwind.md`** - Tailwind CSS v4.3 reference (utilities, responsive design, state variants, dark mode, theme customization, directives, best practices)
+- **`docs/tailwind.md`** - Tailwind CSS v4 reference (utilities, responsive design, state variants, dark mode, theme customization, directives, common pitfalls, accessibility)
 
 ### Online
 - Tailwind CSS Docs: https://tailwindcss.com/docs
