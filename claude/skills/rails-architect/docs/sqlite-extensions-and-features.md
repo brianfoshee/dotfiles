@@ -16,7 +16,7 @@ Loading SQLite extensions from Rails and using modern SQLite schema features (ve
 
 Two paths, low-level and configured.
 
-**Configured (Rails 8.1, preferred).** The `extensions:` array in `database.yml` loads extensions on connect. Requires the `sqlite3` gem >= 2.4.0 (which added passing extensions to the `Database.new` constructor). Each entry is a filesystem path, ERB that returns a path, or a constant/module that responds to `.to_path`:
+**Configured (preferred).** The `extensions:` array in `database.yml` loads extensions on connect. Requires the `sqlite3` gem >= 2.4.0 (which added passing extensions to the `Database.new` constructor). Each entry is a filesystem path, ERB that returns a path, or a constant/module that responds to `.to_path`:
 
 ```yaml
 production:
@@ -29,7 +29,7 @@ production:
       - .sqlpkg/nalgeon/crypto/crypto.so # filesystem path
 ```
 
-**Low-level (manual).** In an initializer against the raw connection — needed on Rails < 8.1 or for conditional loading:
+**Low-level (manual).** In an initializer against the raw connection, for conditional loading:
 
 ```ruby
 db = ActiveRecord::Base.connection.raw_connection
@@ -67,7 +67,7 @@ WHERE embedding MATCH '[...]' ORDER BY distance LIMIT 10;
 
 FTS5 is a virtual-table module compiled into most SQLite builds, with built-in BM25 ranking and external-content mode. Prefer it over an external search engine for single-server apps.
 
-**Rails 8.0 added native migration support** (`create_virtual_table` / `drop_virtual_table`, PR #52354) and fixed `schema.rb` dumping so the virtual table is dumped while its shadow tables are excluded:
+**Rails has native migration support** (`create_virtual_table` / `drop_virtual_table`, PR #52354) and dumps the virtual table to `schema.rb` while excluding its shadow tables:
 
 ```ruby
 create_virtual_table "documents_fts", "fts5",
@@ -125,8 +125,8 @@ What the ActiveRecord schema DSL supports natively for SQLite:
 
 Maintained by sparklemotion; the 2.x line vendors and compiles the latest libsqlite3 and ships precompiled native gems. Two versions matter for the features above:
 
-- **2.0** — the non-GVL-blocking `busy_handler_timeout=` that Rails 8.0's busy handler uses.
-- **2.4.0** — extensions can be passed to the `Database.new` constructor, which Rails 8.1's `extensions:` config depends on.
+- **2.0** — the non-GVL-blocking `busy_handler_timeout=` that Rails' busy handler uses.
+- **2.4.0** — extensions can be passed to the `Database.new` constructor, which the `extensions:` config depends on.
 
 ## References
 

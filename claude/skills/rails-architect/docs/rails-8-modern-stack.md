@@ -439,7 +439,7 @@ PRAGMA mmap_size = 128MB;
 - Reduces system calls
 - Significant performance improvement
 
-The exact `DEFAULT_PRAGMAS` Rails applies on connect (these values date to Rails 7.1; the named constant and the `pragmas:` override key arrived in 7.2, PR #50460):
+The exact `DEFAULT_PRAGMAS` Rails applies on connect:
 ```sql
 PRAGMA foreign_keys = ON;              -- Enforce foreign keys
 PRAGMA journal_mode = WAL;             -- Write-Ahead Logging
@@ -450,7 +450,7 @@ PRAGMA cache_size = 2000;              -- 2000 pages (~8MB at 4KB page size)
 ```
 **You don't configure these - Rails does it for you.** Note `cache_size` is `2000` *pages* (~8MB), not a byte count. `temp_store` and `busy_timeout` are **not** in the defaults (contrary to some older guides); concurrency is handled by the busy handler below, driven by the `timeout:` connection setting.
 
-**4. Non-GVL-Blocking Busy Handler (Rails 8.0)**
+**4. Non-GVL-Blocking Busy Handler**
 
 Setting any `timeout:` (ms) in `database.yml` installs a fair-retry busy handler via `busy_handler_timeout=` instead of the old blocking `busy_timeout()`. Without a `timeout:`, there is no wait at all. The generated `database.yml` ships `timeout: 5000`.
 
@@ -462,13 +462,13 @@ Setting any `timeout:` (ms) in `database.yml` installs a fair-retry busy handler
 
 **Reference:** [Rails PR #51958](https://github.com/rails/rails/pull/51958)
 
-**5. IMMEDIATE Transactions (Rails 8.0) — the root-cause fix**
+**5. IMMEDIATE Transactions — the root-cause fix**
 
 This is the single most important concurrency change, and it pairs with the busy handler above.
 
 SQLite's native default is **DEFERRED** transactions: the write lock isn't acquired until the *first write inside* the transaction. If another connection holds the lock at that mid-transaction moment, SQLite **cannot retry** — you get an immediate `SQLite3::BusyException: database is locked`, even with a busy_timeout set. In a Rails app where nearly every explicit `transaction do` block writes, this is the real source of spurious lock errors.
 
-Rails 8.0 sets `default_transaction_mode: :immediate`, acquiring the write lock at `BEGIN`. Contention now happens *before* the transaction does work, so the busy handler can fairly queue and retry it.
+Rails sets `default_transaction_mode: :immediate`, acquiring the write lock at `BEGIN`. Contention now happens *before* the transaction does work, so the busy handler can fairly queue and retry it.
 
 ```ruby
 # DEFERRED (SQLite default): lock grabbed mid-transaction, can't retry → BusyException
@@ -479,9 +479,9 @@ Fixtures and joinable transactions stay DEFERRED internally; there is no public 
 
 **Reference:** [Rails PR #50371](https://github.com/rails/rails/pull/50371)
 
-> **Note on `activerecord-enhancedsqlite3-adapter`:** Stephen Margheim's gem originally backported these features, but WAL/NORMAL default pragmas (7.1), generated columns (7.2), and the IMMEDIATE-transaction default + GVL-releasing busy handler (8.0) are all in core now. On Rails 8 the gem is largely redundant — only reach for it for its deferred/custom foreign-key sugar or the experimental reader/writer connection-pool split.
+> **Note on `activerecord-enhancedsqlite3-adapter`:** Stephen Margheim's gem originally backported these features, but the default pragmas, generated columns, and the IMMEDIATE-transaction default + GVL-releasing busy handler are all in core now. The gem is largely redundant — only reach for it for its deferred/custom foreign-key sugar or the experimental reader/writer connection-pool split.
 
-### Customizing Pragmas (Rails 7.2)
+### Customizing Pragmas
 
 Override any default PRAGMA (or add your own) under a `pragmas:` key in `database.yml`. Values merge over `DEFAULT_PRAGMAS`; unknown pragmas warn.
 
@@ -497,7 +497,7 @@ production:
 
 **Reference:** [Rails PR #50460](https://github.com/rails/rails/pull/50460)
 
-### Loading SQLite Extensions (Rails 8.1)
+### Loading SQLite Extensions
 
 Load extensions (sqlite-vec, sqlean, etc.) via an `extensions:` array in `database.yml`. Requires the `sqlite3` gem >= 2.4.0. Each entry is a filesystem path, ERB returning a path, or a module that responds to `.to_path`.
 
