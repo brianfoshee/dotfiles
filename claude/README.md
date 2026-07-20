@@ -18,8 +18,21 @@ ln -s ~/.dotfiles/claude ~/.claude
 
 - **settings.json**: Claude Code settings including:
   - Custom status line command (shows user, cwd, git branch, and dirty status)
-  - Cleanup period (99999 days - essentially never auto-cleanup)
-  - Default model (sonnet with 1M context)
+  - Cleanup period (180 days - chat transcripts older than this are auto-removed)
+  - Vim editor mode and fullscreen TUI
+  - A `permissions.deny` list as a safety net under `auto` mode (blocks reading secret files, `git push`, and destructive `rm -rf`)
+
+  The live `settings.json` is **not** tracked in git — Claude Code rewrites it at runtime (embedding transient state like survey timestamps), so it's `.gitignore`d to avoid churn. The tracked template is **`settings.json.example`**.
+
+#### New machine setup
+
+After symlinking this directory to `~/.claude`, copy the template into place:
+
+```bash
+cp ~/.claude/settings.json.example ~/.claude/settings.json
+```
+
+Claude Code takes over the copy from there. Re-diff the two files periodically if you want to fold intentional setting changes back into the tracked template (skip runtime keys like `feedbackSurveyState`).
 
 ### Custom Skills
 
@@ -45,13 +58,19 @@ Expert Ruby on Rails architect for reviewing existing Rails applications, sugges
 These directories are created and managed by Claude Code:
 
 - **projects/**: Per-project conversation history and context
+- **sessions/**: Saved session state
 - **history.jsonl**: Global command history
 - **session-env/**: Session-specific environment state
 - **todos/**: Task tracking files
+- **tasks/**: Background task state
+- **jobs/**: Background job state
+- **daemon/**, **daemon.***: Background daemon state, logs, and lock
 - **file-history/**: File change tracking
 - **debug/**: Debug logs and diagnostics
 - **plans/**: Planning mode artifacts
 - **shell-snapshots/**: Shell command snapshots
 - **plugins/**: Plugin marketplace integrations
+- **teams/**: Agent team state
+- **cache/**, **paste-cache/**: Cached data
 - **telemetry/**: Usage telemetry data
 - **statsig/**: Feature flag configuration

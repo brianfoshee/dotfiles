@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "cleanupPeriodDays": 180,
+  "env": {
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1",
+    "CLAUDE_CODE_MAX_OUTPUT_TOKENS": "128000",
+    "CLAUDE_CODE_DISABLE_OFFICIAL_MARKETPLACE_AUTOINSTALL": "1"
+  },
+  "permissions": {
+    "defaultMode": "auto",
+    "deny": [
+      "Read(**/.env)",
+      "Read(**/.env.*)",
+      "Read(**/*.tfvars)",
+      "Read(**/credentials.yml.enc)",
+      "Read(**/master.key)",
+      "Bash(git push:*)",
+      "Bash(rm -rf /*)",
+      "Bash(rm -rf ~/*)"
+    ]
+  },
+  "statusLine": {
+    "type": "command",
+    "command": "input=$(cat); cwd=$(echo \"$input\" | jq -r '.workspace.current_dir'); userpart=\"$(whoami)\"; [ ! -z \"${GITHUB_USER:-}\" ] && userpart=\"@${GITHUB_USER}\"; gitpart=\"\"; if [ \"$(git -C \"$cwd\" config --get devcontainers-theme.hide-status 2>/dev/null)\" != 1 ] && [ \"$(git -C \"$cwd\" config --get codespaces-theme.hide-status 2>/dev/null)\" != 1 ]; then branch=$(git -C \"$cwd\" --no-optional-locks symbolic-ref --short HEAD 2>/dev/null || git -C \"$cwd\" --no-optional-locks rev-parse --short HEAD 2>/dev/null); if [ ! -z \"$branch\" ]; then gitpart=\"($branch\"; if [ \"$(git -C \"$cwd\" config --get devcontainers-theme.show-dirty 2>/dev/null)\" = 1 ] && git -C \"$cwd\" --no-optional-locks ls-files --error-unmatch -m --directory --no-empty-directory -o --exclude-standard \":/*\" > /dev/null 2>&1; then gitpart=\"${gitpart} ✗\"; fi; gitpart=\"${gitpart}) \"; fi; fi; printf \"\\033[0;32m%s \\033[0m➜ \\033[1;34m%s \\033[0;36m%s\\033[0m\" \"$userpart\" \"$cwd\" \"$gitpart\""
+  },
+  "tui": "fullscreen",
+  "skipWorkflowUsageWarning": true,
+  "editorMode": "vim",
+  "agentPushNotifEnabled": true,
+  "skipAutoPermissionPrompt": true,
+  "voiceEnabled": true
+}
