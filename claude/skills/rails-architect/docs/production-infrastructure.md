@@ -262,43 +262,39 @@ Litestream continuously replicates SQLite databases to cloud storage (S3, Azure 
 - **Point-in-time recovery** - Restore to any moment
 - **Zero downtime** - No application changes needed
 - **Low cost** - Uses cheap object storage
+- **Live read replicas** (v0.5+) - The primary streams changes to read-only replicas, the capability that previously required LiteFS
+
+**v0.5 config changes (important):** Litestream v0.5 (Oct 2025) was a major rewrite. Each database now takes a **single `replica:` (singular map)**, not a `replicas:` list. Retention moved to a **global `snapshot.retention`** in the root config rather than per-replica. The old v0.3 WAL-segment format is not restore-compatible, and `litestream wal` became `litestream ltx`. The examples below use the v0.5 format. Litestream is still pre-1.0, so treat the config as stable-in-practice but not SemVer-guaranteed.
+
+**Which databases to back up:** replicate the **primary** database always. The Solid **cache** and **cable** databases hold transient/regenerable data — skip them to cut object-storage cost and noise. The **queue** database is a judgment call: it holds not-yet-run scheduled/enqueued jobs, so back it up if losing pending work on a crash matters. The examples below replicate primary + queue and omit cache/cable.
 
 ### Configuration: Cloudflare R2
 
-R2 is S3-compatible, so Litestream uses the `s3` replica type. YAML anchors (`&r2_replica` / `<<: *r2_replica`) avoid repeating the replica block for each database. Litestream does `$VAR` interpolation after YAML parsing, so anchors and env vars work together.
+R2 is S3-compatible, so Litestream uses the `s3` replica type. Each db takes one `replica:` map (v0.5). YAML anchors (`&r2_replica` / `<<: *r2_replica`) avoid repeating the shared fields. Litestream does `$VAR` interpolation after YAML parsing, so anchors and env vars work together.
 
 ```yaml
-# config/litestream.yml
+# config/litestream.yml (Litestream v0.5+)
+snapshot:
+  retention: 720h                      # 30 days, global (per-replica retention was removed in v0.5)
+
 dbs:
   - path: /rails/storage/production.sqlite3
-    replicas:
-      - &r2_replica
-        type: s3
-        bucket: $LITESTREAM_REPLICA_BUCKET
-        endpoint: $LITESTREAM_REPLICA_ENDPOINT
-        region: auto
-        access-key-id: $LITESTREAM_ACCESS_KEY_ID
-        secret-access-key: $LITESTREAM_SECRET_ACCESS_KEY
-        path: production.sqlite3
-        sync-interval: 60s
-
-  - path: /rails/storage/production_cache.sqlite3
-    replicas:
-      - <<: *r2_replica
-        path: production_cache.sqlite3
-        sync-interval: 300s
+    replica: &r2_replica
+      type: s3
+      bucket: $LITESTREAM_REPLICA_BUCKET
+      endpoint: $LITESTREAM_REPLICA_ENDPOINT
+      region: auto
+      access-key-id: $LITESTREAM_ACCESS_KEY_ID
+      secret-access-key: $LITESTREAM_SECRET_ACCESS_KEY
+      path: production.sqlite3
+      sync-interval: 1s
 
   - path: /rails/storage/production_queue.sqlite3
-    replicas:
-      - <<: *r2_replica
-        path: production_queue.sqlite3
-        sync-interval: 300s
+    replica:
+      <<: *r2_replica
+      path: production_queue.sqlite3
 
-  - path: /rails/storage/production_cable.sqlite3
-    replicas:
-      - <<: *r2_replica
-        path: production_cable.sqlite3
-        sync-interval: 300s
+  # Cache and cable databases are intentionally omitted — transient/regenerable data.
 ```
 
 Environment variables:
@@ -320,56 +316,43 @@ resource "cloudflare_r2_bucket" "backups" {
 ### Configuration: Azure Blob Storage
 
 ```yaml
-# config/litestream.yml
+# config/litestream.yml (Litestream v0.5+)
 access-key-id: ${STORAGE_ACCOUNT_NAME}
 secret-access-key: ${STORAGE_ACCOUNT_KEY}
 
+snapshot:
+  retention: 720h                        # 30 days, global (v0.5 removed per-replica retention)
+
 dbs:
-  # Primary database - most important, longest retention
+  # Primary database - business data
   - path: /rails/storage/production.sqlite3
-    replicas:
-      - type: abs                        # Azure Blob Storage
-        bucket: db-backups-production
-        endpoint: https://mystorageaccount.blob.core.windows.net
-        sync-interval: 1s                # Near real-time replication
-        retention: 720h                  # 30 days of history
+    replica:
+      type: abs                          # Azure Blob Storage
+      bucket: db-backups-production
+      endpoint: https://mystorageaccount.blob.core.windows.net
+      sync-interval: 1s                  # Near real-time replication
 
-  # Queue database - important but shorter retention
+  # Queue database - back up if pending jobs must survive a crash
   - path: /rails/storage/production_queue.sqlite3
-    replicas:
-      - type: abs
-        bucket: db-backups-production
-        path: queue
-        sync-interval: 1s
-        retention: 168h                  # 7 days
+    replica:
+      type: abs
+      bucket: db-backups-production
+      path: queue
+      sync-interval: 1s
 
-  # Cache database - least critical
-  - path: /rails/storage/production_cache.sqlite3
-    replicas:
-      - type: abs
-        bucket: db-backups-production
-        path: cache
-        sync-interval: 60s               # Less frequent
-        retention: 24h                   # 1 day only
-
-  # Cable database - WebSocket state
-  - path: /rails/storage/production_cable.sqlite3
-    replicas:
-      - type: abs
-        bucket: db-backups-production
-        path: cable
-        sync-interval: 60s
-        retention: 24h
+  # Cache and cable databases are intentionally omitted — transient/regenerable data.
 ```
 
-### Retention Strategy
+### Backup Policy
 
-| Database | Sync Interval | Retention | Rationale |
-|----------|--------------|-----------|-----------|
-| Primary | 1 second | 30 days | Business data, needs full history |
-| Queue | 1 second | 7 days | Jobs can be re-enqueued if lost |
-| Cache | 60 seconds | 24 hours | Ephemeral, easily regenerated |
-| Cable | 60 seconds | 24 hours | WebSocket state, transient |
+| Database | Back up? | Rationale |
+|----------|----------|-----------|
+| Primary | Always | Business data, needs full history |
+| Queue | Optional | Holds not-yet-run jobs; back up if losing pending work matters |
+| Cache | Skip | Ephemeral, regenerated on demand |
+| Cable | Skip | WebSocket pub/sub state, transient |
+
+Retention is now a single global `snapshot.retention` (v0.5), not per-database. If you need different retention windows per database, run separate Litestream configs/processes.
 
 ### Recovery Commands
 

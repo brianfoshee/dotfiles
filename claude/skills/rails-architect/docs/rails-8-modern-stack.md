@@ -349,7 +349,7 @@ Sentry.set_context("app", { revision: Rails.app.revision })
 default: &default
   adapter: sqlite3
   pool: <%= ENV.fetch("RAILS_MAX_THREADS") { 5 } %>
-  timeout: 5000  # >= 5000ms enables Rails 8's non-GVL-blocking busy handler (see "Rails 8 SQLite Performance Optimizations" below)
+  timeout: 5000  # Any timeout installs Rails 8's non-GVL-blocking busy handler; 5000 is the generator default (see "Rails 8 SQLite Performance Optimizations" below)
 
 development:
   primary:
@@ -439,53 +439,86 @@ PRAGMA mmap_size = 128MB;
 - Reduces system calls
 - Significant performance improvement
 
-The full set Rails 8 applies on connect:
+The exact `DEFAULT_PRAGMAS` Rails applies on connect:
 ```sql
+PRAGMA foreign_keys = ON;              -- Enforce foreign keys
 PRAGMA journal_mode = WAL;             -- Write-Ahead Logging
 PRAGMA synchronous = NORMAL;           -- Balanced durability
 PRAGMA mmap_size = 134217728;          -- 128MB memory-mapped I/O
 PRAGMA journal_size_limit = 67108864;  -- 64MB journal limit
-PRAGMA cache_size = -64000;            -- 64MB cache
+PRAGMA cache_size = 2000;              -- 2000 pages (~8MB at 4KB page size)
 ```
-**You don't configure these - Rails does it for you.**
+**You don't configure these - Rails does it for you.** Note `cache_size` is `2000` *pages* (~8MB), not a byte count. `temp_store` and `busy_timeout` are **not** in the defaults (contrary to some older guides); concurrency is handled by the busy handler below, driven by the `timeout:` connection setting.
 
 **4. Non-GVL-Blocking Busy Handler**
-```ruby
-timeout: 5000  # Must be >= 5000ms to enable; without it you get the old blocking behavior
-```
 
-**This is the breakthrough:**
+Setting any `timeout:` (ms) in `database.yml` installs a fair-retry busy handler via `busy_handler_timeout=` instead of the old blocking `busy_timeout()`. Without a `timeout:`, there is no wait at all. The generated `database.yml` ships `timeout: 5000`.
+
+**This is half the concurrency story:**
 - Ruby's Global VM Lock (GVL) normally blocks during SQLite busy waits
-- Rails 8 releases GVL during busy handler
-- Other Ruby threads can run while waiting for database lock
-- **25x faster** in concurrent scenarios (~10x more throughput under load)
-- Critical for production SQLite
+- Rails 8 releases the GVL while the busy handler waits
+- Other Ruby threads keep running while one waits for the database lock
+- Requires the `sqlite3` gem >= 2.0; translates `SQLite3::BusyException` to `ActiveRecord::StatementTimeout`
 
-**How it works:**
+**Reference:** [Rails PR #51958](https://github.com/rails/rails/pull/51958)
+
+**5. IMMEDIATE Transactions — the root-cause fix**
+
+This is the single most important concurrency change, and it pairs with the busy handler above.
+
+SQLite's native default is **DEFERRED** transactions: the write lock isn't acquired until the *first write inside* the transaction. If another connection holds the lock at that mid-transaction moment, SQLite **cannot retry** — you get an immediate `SQLite3::BusyException: database is locked`, even with a busy_timeout set. In a Rails app where nearly every explicit `transaction do` block writes, this is the real source of spurious lock errors.
+
+Rails sets `default_transaction_mode: :immediate`, acquiring the write lock at `BEGIN`. Contention now happens *before* the transaction does work, so the busy handler can fairly queue and retry it.
+
 ```ruby
-# Old approach (pre-Rails 8): Blocks GVL
-# Thread 1: Writing to DB, holds lock, blocks GVL
-# Thread 2: Tries to write, waits with GVL blocked
-# Result: Other threads can't run AT ALL
-
-# Rails 8 approach: Releases GVL
-# Thread 1: Writing to DB, holds lock
-# Thread 2: Tries to write, releases GVL, waits with fair retry
-# Thread 3-N: Continue processing other requests
-# Result: Application remains responsive under load
+# DEFERRED (SQLite default): lock grabbed mid-transaction, can't retry → BusyException
+# IMMEDIATE (Rails 8 default): lock grabbed at BEGIN, handler retries fairly
 ```
 
-**Concrete impact:** under Rails 7, a write in progress with 10 concurrent requests blocks all 10 on the GVL and response times climb past 5000ms. Under Rails 8 those requests release the GVL and wait with fair retry, keeping response times in the 50-200ms range.
+Fixtures and joinable transactions stay DEFERRED internally; there is no public config flag to change the default. Together with WAL + the busy handler, IMMEDIATE transactions are what actually eliminate the error storm: benchmarks show untuned SQLite erroring on ~half of responses at just 4 concurrent writers, versus near-zero errors and roughly an order-of-magnitude better P99 once all three are in place.
 
-**Reference:**
-- [Rails PR #51958](https://github.com/rails/rails/pull/51958)
-- Implements fair retry intervals and GVL release
+**Reference:** [Rails PR #50371](https://github.com/rails/rails/pull/50371)
+
+> **Note on `activerecord-enhancedsqlite3-adapter`:** Stephen Margheim's gem originally backported these features, but the default pragmas, generated columns, and the IMMEDIATE-transaction default + GVL-releasing busy handler are all in core now. The gem is largely redundant — only reach for it for its deferred/custom foreign-key sugar or the experimental reader/writer connection-pool split.
+
+### Customizing Pragmas
+
+Override any default PRAGMA (or add your own) under a `pragmas:` key in `database.yml`. Values merge over `DEFAULT_PRAGMAS`; unknown pragmas warn.
+
+```yaml
+production:
+  primary:
+    <<: *default
+    database: storage/production.sqlite3
+    pragmas:
+      temp_store: memory       # keep temp tables/indexes in RAM
+      cache_size: -64000       # negative = KB, so this is 64MB (default is 2000 pages)
+```
+
+**Reference:** [Rails PR #50460](https://github.com/rails/rails/pull/50460)
+
+### Loading SQLite Extensions
+
+Load extensions (sqlite-vec, sqlean, etc.) via an `extensions:` array in `database.yml`. Requires the `sqlite3` gem >= 2.4.0. Each entry is a filesystem path, ERB returning a path, or a module that responds to `.to_path`.
+
+```yaml
+production:
+  primary:
+    <<: *default
+    database: storage/production.sqlite3
+    extensions:
+      - SQLean::UUID                     # gem module responding to .to_path
+      - <%= SqliteVec.loadable_path %>   # ERB returning a path
+      - .sqlpkg/nalgeon/crypto/crypto.so # filesystem path
+```
+
+See `docs/sqlite-extensions-and-features.md` for the extension ecosystem and modern schema features. **Reference:** [Rails PR #53827](https://github.com/rails/rails/pull/53827)
 
 ### SQLite Production Checklist
 
 ```ruby
-# ✅ Ensure timeout is set correctly
-timeout: 5000  # Minimum for Rails 8 optimizations
+# ✅ Set a timeout to install the non-GVL-blocking busy handler
+timeout: 5000  # Any value works; 5000 is the generator default
 
 # ✅ Use WAL mode (automatic in Rails 8)
 # No configuration needed
@@ -728,7 +761,7 @@ bin/rails db:migrate:cache
 ### For Applications
 
 - ✅ **Production-ready** - Rails 8 makes SQLite production-worthy
-- ✅ **Better performance** - 25x improvement with new busy handler
+- ✅ **Better performance** - IMMEDIATE transactions + GVL-releasing busy handler eliminate spurious lock errors under concurrency
 - ✅ **Zero-build** - Import maps eliminate build complexity
 - ✅ **Modern stack** - Latest Rails conventions
 - ✅ **Future-proof** - Foundation for Rails 9+
@@ -834,5 +867,5 @@ The beauty of this stack: Easy to adopt Redis later if needed. Start simple.
 - [Solid Queue](https://github.com/basecamp/solid_queue)
 - [Solid Cache](https://github.com/basecamp/solid_cache)
 - [Solid Cable](https://github.com/basecamp/solid_cable)
-- [SQLite Optimizations PR](https://github.com/rails/rails/pull/51958)
+- [Busy handler PR #51958](https://github.com/rails/rails/pull/51958) · [IMMEDIATE transactions #50371](https://github.com/rails/rails/pull/50371) · [pragmas: config #50460](https://github.com/rails/rails/pull/50460) · [extensions: config #53827](https://github.com/rails/rails/pull/53827)
 - [Puma Plugins](https://github.com/puma/puma/blob/master/docs/plugins.md)

@@ -147,7 +147,7 @@ UUIDs for primary keys, sequential numbers for display. Override `to_param` to u
 
 ### 10. SQLite Full-Text Search
 
-Use FTS5 instead of external search engines. For scale: sharded search tables with hash-based routing by account.
+Use FTS5 instead of external search engines (`create_virtual_table` + sync triggers). For scale: sharded search tables with hash-based routing by account. See `docs/sqlite-extensions-and-features.md`.
 
 ## Architecture Review Checklist
 
@@ -182,6 +182,10 @@ This skill includes production-proven patterns extracted from real Rails 8.2 app
 ### UUIDv7 with SQLite
 **`docs/uuidv7-sqlite.md`** - Auto-generation, Active Storage config, fixture IDs, foreign keys, migrations.
 **When to read**: UUID primary keys, globally unique IDs, time-ordered IDs.
+
+### SQLite Extensions and Schema Features
+**`docs/sqlite-extensions-and-features.md`** - Loading extensions (`extensions:` config), sqlite-vec vector search, FTS5 full-text search, sqlean, generated columns, RETURNING, JSON, STRICT-table caveat.
+**When to read**: Vector/semantic search, full-text search, loading SQLite extensions, modern schema features (generated columns, RETURNING, JSON).
 
 ### Testing Pyramid
 **`docs/testing-pyramid.md`** - Test levels, distribution (61% model, 30% controller), system test avoidance, JSON fields, multi-tenancy testing.
