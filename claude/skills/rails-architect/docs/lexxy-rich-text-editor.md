@@ -2,6 +2,77 @@
 
 Production-proven pattern for using Lexxy instead of Trix as the rich text editor in Rails applications with ActionText.
 
+## Contents
+
+- [Overview](#overview)
+- [Setup](#setup)
+  - [Gem Installation](#gem-installation)
+  - [JavaScript Import](#javascript-import)
+  - [CSS](#css)
+  - [Configuration](#configuration)
+  - [Editor Attributes](#editor-attributes)
+- [Model Usage](#model-usage)
+- [Form Rendering](#form-rendering)
+  - [With Prompts (Autocomplete)](#with-prompts-autocomplete)
+- [The SGID System](#the-sgid-system)
+  - [How It Works](#how-it-works)
+  - [Making Models Attachable](#making-models-attachable)
+- [Prompt System](#prompt-system)
+  - [Trigger Capabilities](#trigger-capabilities)
+  - [Multiple Prompts with Different Content Types](#multiple-prompts-with-different-content-types)
+  - [Prompt Attributes](#prompt-attributes)
+  - [Prompt Item Structure](#prompt-item-structure)
+  - [Loading Strategies](#loading-strategies)
+  - [Helper Implementation](#helper-implementation)
+- [Example: Music and Video Slash Commands](#example-music-and-video-slash-commands)
+  - [Model Setup](#model-setup)
+  - [Prompt Items](#prompt-items)
+  - [Embed Partials](#embed-partials)
+- [Editor Events and Stimulus Integration](#editor-events-and-stimulus-integration)
+  - [Wiring Pattern](#wiring-pattern)
+  - [Available Events](#available-events)
+  - [Production Examples](#production-examples)
+  - [Auto-Save Controller](#auto-save-controller)
+  - [Local Save Controller (Draft Recovery)](#local-save-controller-draft-recovery)
+  - [Link Unfurling with `lexxy:insert-link`](#link-unfurling-with-lexxyinsert-link)
+- [Syntax Highlighting](#syntax-highlighting)
+- [JavaScript Configuration](#javascript-configuration)
+- [Custom Upload Handling (Image Models)](#custom-upload-handling-image-models)
+  - [The Problem](#the-problem)
+  - [Solution: Custom Upload Endpoint](#solution-custom-upload-endpoint)
+  - [Image Model](#image-model)
+  - [Upload Controller](#upload-controller)
+  - [Response Shape](#response-shape)
+  - [Embed Partial](#embed-partial)
+  - [Alternative: Intercept with `lexxy:file-accept`](#alternative-intercept-with-lexxyfile-accept)
+  - [When to Use Each Approach](#when-to-use-each-approach)
+- [Canonical HTML Format](#canonical-html-format)
+  - [File Attachments](#file-attachments)
+  - [Custom Attachables (Mentions)](#custom-attachables-mentions)
+  - [Allowed Attributes](#allowed-attributes)
+- [HTML Sanitization](#html-sanitization)
+  - [Editor-Side Sanitization (DOMPurify)](#editor-side-sanitization-dompurify)
+- [Content Rendering](#content-rendering)
+- [Styling](#styling)
+  - [Editor Styles](#editor-styles)
+  - [Rendered Content Styles](#rendered-content-styles)
+- [System Testing](#system-testing)
+  - [Fill Helper](#fill-helper)
+  - [Test Example](#test-example)
+- [Hotkey Handling](#hotkey-handling)
+- [Pluggable Editor Registry](#pluggable-editor-registry)
+  - [Editor Interface](#editor-interface)
+  - [Per-Model Editor Selection](#per-model-editor-selection)
+  - [Deprecation Note](#deprecation-note)
+- [Tables](#tables)
+- [Image Galleries](#image-galleries)
+- [Text Highlighting](#text-highlighting)
+- [CSS Custom Properties](#css-custom-properties)
+- [Extension System](#extension-system)
+- [Remote Video Attachable](#remote-video-attachable)
+- [Key Architectural Points](#key-architectural-points)
+- [References](#references)
+
 ## Overview
 
 **Lexxy** is a Basecamp-built rich text editor that wraps Meta's Lexical framework. It provides a modern editing experience while integrating seamlessly with Rails ActionText.
@@ -25,7 +96,7 @@ Production-proven pattern for using Lexxy instead of Trix as the rich text edito
 
 ```ruby
 # Gemfile
-gem "lexxy", "~> 0.9.0.beta"  # still beta at time of writing
+gem "lexxy", "~> 0.9"
 ```
 
 ### JavaScript Import
@@ -1033,7 +1104,7 @@ end
 
 ### Editor-Side Sanitization (DOMPurify)
 
-**This is separate from the server-side Action Text sanitizer above.** Since 0.9.4, Lexxy runs DOMPurify over the `innerHtml` of every custom attachment before inserting it into the editor's in-place preview. 0.9.7 further tightened this pass. The client allowlist is built from each active extension's `allowedElements` getter plus a small set of globally-permitted attributes (`class`, `contenteditable`, `href`, `src`, `style`, `title`).
+**This is separate from the server-side Action Text sanitizer above.** Lexxy runs DOMPurify over the `innerHtml` of every custom attachment before inserting it into the editor's in-place preview. The client allowlist is built from each active extension's `allowedElements` getter plus a small set of globally-permitted attributes (`class`, `contenteditable`, `href`, `src`, `style`, `title`).
 
 The practical consequence: if your custom attachment partial emits tags beyond the common block/inline set — most commonly `<iframe>` for Spotify / Apple Music / YouTube embeds — they'll be stripped in the *editor preview* even though the *saved/published* HTML is intact (because that goes through the server-side `ActionText::ContentHelper` allowlist, which is independent). Symptom: the attachment appears to render correctly after saving but looks broken or empty while editing.
 

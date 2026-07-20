@@ -2,6 +2,46 @@
 
 Production-proven patterns for organizing and writing Rails views (HTML.erb), based on real-world implementations from 37signals/Basecamp. This focuses on architectural patterns, not HTML/CSS specifics.
 
+## Contents
+
+- [Core Philosophy](#core-philosophy)
+- [Variable Usage in Views](#variable-usage-in-views)
+  - [Instance Variables from Controllers](#instance-variables-from-controllers)
+  - [Locals for Partials](#locals-for-partials)
+  - [Optional Locals with Defaults](#optional-locals-with-defaults)
+  - [Checking for Local Presence](#checking-for-local-presence)
+- [Helper Methods](#helper-methods)
+  - [When to Use Helpers](#when-to-use-helpers)
+  - [When to Use Inline ERB](#when-to-use-inline-erb)
+  - [Helper Organization](#helper-organization)
+  - [Semantic Tag Builders Pattern](#semantic-tag-builders-pattern)
+- [View Organization & Partials](#view-organization--partials)
+  - [Directory Structure Pattern](#directory-structure-pattern)
+  - [Naming Conventions](#naming-conventions)
+  - [When to Extract Partials](#when-to-extract-partials)
+  - [Partial Rendering Patterns](#partial-rendering-patterns)
+- [Logic in ERB - Scope Guidelines](#logic-in-erb---scope-guidelines)
+  - [Acceptable in Views](#acceptable-in-views)
+  - [Belongs in Helpers/Models](#belongs-in-helpersmodels)
+- [Display Variants Pattern](#display-variants-pattern)
+- [Turbo/Hotwire Patterns](#turbohotwire-patterns)
+  - [Turbo Stream Responses](#turbo-stream-responses)
+  - [Turbo Frames](#turbo-frames)
+  - [Broadcasting for Real-Time Updates](#broadcasting-for-real-time-updates)
+  - [Turbo-Specific Helpers](#turbo-specific-helpers)
+  - [Integration with Stimulus](#integration-with-stimulus)
+- [Content Blocks & Layout Customization](#content-blocks--layout-customization)
+  - [content_for Pattern](#content_for-pattern)
+- [Caching Strategies](#caching-strategies)
+  - [Fragment Caching](#fragment-caching)
+- [Key Architectural Insights](#key-architectural-insights)
+- [Common Anti-Patterns to Avoid](#common-anti-patterns-to-avoid)
+  - [❌ Anti-Pattern 1: Business Logic in Views](#-anti-pattern-1-business-logic-in-views)
+  - [❌ Anti-Pattern 2: Complex Helpers](#-anti-pattern-2-complex-helpers)
+  - [❌ Anti-Pattern 3: Deep Nesting](#-anti-pattern-3-deep-nesting)
+  - [❌ Anti-Pattern 4: Instance Variables in Partials](#-anti-pattern-4-instance-variables-in-partials)
+- [References](#references)
+
 ## Core Philosophy
 
 **Views should be declarative, not imperative.**

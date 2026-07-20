@@ -2,6 +2,42 @@
 
 Production-proven patterns for user roles and authorization in Rails applications, based on real-world implementations from 37signals/Basecamp.
 
+## Contents
+
+- [Core Philosophy](#core-philosophy)
+- [Role Definition](#role-definition)
+  - [The Four Standard Roles](#the-four-standard-roles)
+  - [Database Schema](#database-schema)
+  - [Hierarchical Permissions](#hierarchical-permissions)
+- [Role Design Guidelines](#role-design-guidelines)
+  - [What Makes a Good Role](#what-makes-a-good-role)
+  - [What Makes a Bad Role](#what-makes-a-bad-role)
+- [Authorization Architecture](#authorization-architecture)
+  - [Identity vs User Separation](#identity-vs-user-separation)
+  - [Current Attributes Pattern](#current-attributes-pattern)
+  - [Authorization Layers](#authorization-layers)
+- [Authorization Patterns](#authorization-patterns)
+  - [Pattern 1: Role + Ownership](#pattern-1-role--ownership)
+  - [Pattern 2: Role + Hierarchy](#pattern-2-role--hierarchy)
+  - [Pattern 3: Association-Based Access (Implicit)](#pattern-3-association-based-access-implicit)
+  - [Pattern 4: Public Access Exception](#pattern-4-public-access-exception)
+  - [Pattern 5: Bearer Token API Access](#pattern-5-bearer-token-api-access)
+- [Resource-Level Access Control](#resource-level-access-control)
+  - [Board-Level Access Pattern](#board-level-access-pattern)
+  - [Access Management API](#access-management-api)
+  - [Involvement Levels (Optional Enhancement)](#involvement-levels-optional-enhancement)
+  - [Cascading Data Cleanup](#cascading-data-cleanup)
+- [Permission Methods on User](#permission-methods-on-user)
+- [Scoping Associations for Access](#scoping-associations-for-access)
+- [Testing Authorization](#testing-authorization)
+- [Common Anti-Patterns to Avoid](#common-anti-patterns-to-avoid)
+  - [❌ Anti-Pattern 1: Checking Permissions Everywhere](#-anti-pattern-1-checking-permissions-everywhere)
+  - [❌ Anti-Pattern 2: Too Many Roles](#-anti-pattern-2-too-many-roles)
+  - [❌ Anti-Pattern 3: Permissions in Database](#-anti-pattern-3-permissions-in-database)
+  - [❌ Anti-Pattern 4: Callbacks for Authorization](#-anti-pattern-4-callbacks-for-authorization)
+- [Key Architectural Insights](#key-architectural-insights)
+- [References](#references)
+
 ## Core Philosophy
 
 **Simple roles + explicit resource access** beats complex permission systems.

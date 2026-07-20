@@ -2,6 +2,58 @@
 
 Production-proven patterns for building Rails 8.2 applications with zero-build, zero-Redis architecture, based on real-world Rails 8.2 implementation.
 
+## Contents
+
+- [Overview](#overview)
+- [The Modern Stack](#the-modern-stack)
+- [Puma Plugins: Replacing Foreman](#puma-plugins-replacing-foreman)
+  - [The Old Way (Rails 7 and earlier)](#the-old-way-rails-7-and-earlier)
+  - [The New Way (Rails 8.2)](#the-new-way-rails-82)
+  - [Puma Plugin Details](#puma-plugin-details)
+- [Local CI Runner: bin/ci](#local-ci-runner-binci)
+  - [The Game Changer](#the-game-changer)
+  - [Why This Matters](#why-this-matters)
+  - [Comprehensive CI Steps](#comprehensive-ci-steps)
+  - [Usage Examples](#usage-examples)
+- [Rails 8.2 Defaults](#rails-82-defaults)
+  - [Jobs After Transaction Commit](#jobs-after-transaction-commit)
+  - [Active Storage Immediate Analysis](#active-storage-immediate-analysis)
+  - [CSRF Protection via Sec-Fetch-Site](#csrf-protection-via-sec-fetch-site)
+  - [SSL Configuration](#ssl-configuration)
+- [Combined Credentials](#combined-credentials)
+- [Deployment Revision Tracking](#deployment-revision-tracking)
+- [SQLite Multi-Database Architecture](#sqlite-multi-database-architecture)
+  - [Database Configuration](#database-configuration)
+  - [Why Multiple SQLite Databases?](#why-multiple-sqlite-databases)
+  - [Environment Configuration](#environment-configuration)
+- [Rails 8 SQLite Performance Optimizations](#rails-8-sqlite-performance-optimizations)
+  - [Automatic Optimizations (No Configuration Needed)](#automatic-optimizations-no-configuration-needed)
+  - [SQLite Production Checklist](#sqlite-production-checklist)
+  - [When SQLite Is Production-Ready](#when-sqlite-is-production-ready)
+- [Zero Redis Architecture](#zero-redis-architecture)
+  - [What Redis Used to Provide](#what-redis-used-to-provide)
+  - [Infrastructure Simplification](#infrastructure-simplification)
+  - [Benefits of Zero Redis](#benefits-of-zero-redis)
+  - [Solid Queue/Cache/Cable Configuration](#solid-queuecachecable-configuration)
+- [Development Workflow](#development-workflow)
+  - [Starting the Application](#starting-the-application)
+  - [Running Tests](#running-tests)
+  - [Database Management](#database-management)
+- [Benefits Summary](#benefits-summary)
+  - [For Developers](#for-developers)
+  - [For Operations](#for-operations)
+  - [For Applications](#for-applications)
+- [When to Use This Stack](#when-to-use-this-stack)
+  - [Perfect For:](#perfect-for)
+  - [Consider Alternatives For:](#consider-alternatives-for)
+- [Required Gems](#required-gems)
+- [File Structure](#file-structure)
+- [Common Questions](#common-questions)
+  - ["Is SQLite really production-ready?"](#is-sqlite-really-production-ready)
+  - ["What about scaling?"](#what-about-scaling)
+  - ["What if I need Redis?"](#what-if-i-need-redis)
+- [References](#references)
+
 ## Overview
 
 Rails 8.2 introduces a paradigm shift toward simplicity: single-process development, database-backed infrastructure, and production-ready SQLite. This guide shows how to build modern Rails applications without webpack, Redis, or complex process management.
@@ -9,7 +61,7 @@ Rails 8.2 introduces a paradigm shift toward simplicity: single-process developm
 ## The Modern Stack
 
 **Core Technologies:**
-- **Rails 8.2** - Latest stable release
+- **Rails edge/main** - Patterns here target the forthcoming Rails 8.2 (edge/main), not yet released as stable
 - **SQLite** - Primary database + Queue/Cache/Cable
 - **Puma Plugins** - Integrated CSS watching and background jobs
 - **Solid Queue/Cache/Cable** - Database-backed (no Redis)
@@ -123,7 +175,7 @@ bin/dev  # Queue worker included automatically
 
 ### The Game Changer
 
-Rails 8.2 includes a local CI runner that runs your **exact** CI pipeline on your development machine.
+Rails ships a local CI runner (`bin/ci`, introduced in Rails 8.1) that runs your **exact** CI pipeline on your development machine.
 
 ```ruby
 # config/ci.rb
@@ -227,7 +279,7 @@ All checks passed!
 ### Jobs After Transaction Commit
 
 ```ruby
-# config/application.rb (default in 8.2)
+# config/application.rb
 config.active_job.enqueue_after_transaction_commit = true
 ```
 
@@ -248,7 +300,7 @@ Rails 8.2 introduces a new CSRF protection strategy based on the `Sec-Fetch-Site
 
 ```ruby
 # config/application.rb (default for new 8.2 apps)
-config.action_controller.csrf_protection_strategy = :header_only
+config.action_controller.forgery_protection_verification_strategy = :header_only
 ```
 
 `:header_only` relies on the browser's `Sec-Fetch-Site` header, eliminating the need for `authenticity_token` form params. Use `:header_or_legacy_token` for a gradual migration that falls back to traditional token verification.
@@ -297,10 +349,7 @@ Sentry.set_context("app", { revision: Rails.app.revision })
 default: &default
   adapter: sqlite3
   pool: <%= ENV.fetch("RAILS_MAX_THREADS") { 5 } %>
-  timeout: 5000  # Triggers Rails 8's modern busy handler (releases GVL, 25x faster)
-  # Rails 8 automatically configures optimal SQLite settings:
-  # - journal_mode: WAL, synchronous: NORMAL, mmap_size: 128MB
-  # - Non-GVL-blocking busy handler with fair retry intervals
+  timeout: 5000  # >= 5000ms enables Rails 8's non-GVL-blocking busy handler (see "Rails 8 SQLite Performance Optimizations" below)
 
 development:
   primary:
@@ -350,30 +399,15 @@ production:
 
 ### Environment Configuration
 
+Wire the Solid adapters per environment; development mirrors production for consistency:
+
 ```ruby
-# config/environments/production.rb
-Rails.application.configure do
-  # Solid Cache instead of Redis/Memcached
-  config.cache_store = :solid_cache_store
-
-  # Solid Queue instead of Sidekiq/Resque
-  config.active_job.queue_adapter = :solid_queue
-  config.solid_queue.connects_to = { database: { writing: :queue } }
-
-  # Solid Cable instead of Redis (for ActionCable)
-  config.action_cable.adapter = :solid_cable
-
-  # Use Solid Cache for rate limiting
-  config.action_controller.rate_limiting_cache_store = :solid_cache_store
-end
-
-# config/environments/development.rb
-Rails.application.configure do
-  # Same configuration - consistency across environments
-  config.active_job.queue_adapter = :solid_queue
-  config.solid_queue.connects_to = { database: { writing: :queue } }
-end
+# config/environments/production.rb and development.rb
+config.active_job.queue_adapter = :solid_queue
+config.solid_queue.connects_to = { database: { writing: :queue } }
 ```
+
+Cache, Cable, rate limiting, and the full options (queue.yml, cable.yml, features, usage) are covered in [Solid Queue/Cache/Cable Configuration](#solid-queuecachecable-configuration) below.
 
 ## Rails 8 SQLite Performance Optimizations
 
@@ -405,16 +439,26 @@ PRAGMA mmap_size = 128MB;
 - Reduces system calls
 - Significant performance improvement
 
+The full set Rails 8 applies on connect:
+```sql
+PRAGMA journal_mode = WAL;             -- Write-Ahead Logging
+PRAGMA synchronous = NORMAL;           -- Balanced durability
+PRAGMA mmap_size = 134217728;          -- 128MB memory-mapped I/O
+PRAGMA journal_size_limit = 67108864;  -- 64MB journal limit
+PRAGMA cache_size = -64000;            -- 64MB cache
+```
+**You don't configure these - Rails does it for you.**
+
 **4. Non-GVL-Blocking Busy Handler**
 ```ruby
-timeout: 5000  # Must be >= 5000ms to enable
+timeout: 5000  # Must be >= 5000ms to enable; without it you get the old blocking behavior
 ```
 
 **This is the breakthrough:**
 - Ruby's Global VM Lock (GVL) normally blocks during SQLite busy waits
 - Rails 8 releases GVL during busy handler
 - Other Ruby threads can run while waiting for database lock
-- **25x faster** in concurrent scenarios
+- **25x faster** in concurrent scenarios (~10x more throughput under load)
 - Critical for production SQLite
 
 **How it works:**
@@ -431,9 +475,30 @@ timeout: 5000  # Must be >= 5000ms to enable
 # Result: Application remains responsive under load
 ```
 
+**Concrete impact:** under Rails 7, a write in progress with 10 concurrent requests blocks all 10 on the GVL and response times climb past 5000ms. Under Rails 8 those requests release the GVL and wait with fair retry, keeping response times in the 50-200ms range.
+
 **Reference:**
 - [Rails PR #51958](https://github.com/rails/rails/pull/51958)
 - Implements fair retry intervals and GVL release
+
+### SQLite Production Checklist
+
+```ruby
+# ✅ Ensure timeout is set correctly
+timeout: 5000  # Minimum for Rails 8 optimizations
+
+# ✅ Use WAL mode (automatic in Rails 8)
+# No configuration needed
+
+# ✅ Use proper database paths
+database: storage/production.sqlite3  # Persistent storage
+
+# ✅ Configure connection pool
+pool: <%= ENV.fetch("RAILS_MAX_THREADS") { 5 } %>
+
+# ✅ Use Litestream for backups (highly recommended)
+# See: Litestream documentation
+```
 
 ### When SQLite Is Production-Ready
 
@@ -592,92 +657,6 @@ class NotificationsChannel < ApplicationCable::Channel
     stream_from "notifications_#{current_user.id}"
   end
 end
-```
-
-## Rails 8 SQLite Performance Details
-
-### Critical Configuration: timeout >= 5000
-
-```yaml
-# config/database.yml
-default: &default
-  adapter: sqlite3
-  timeout: 5000  # CRITICAL: Triggers Rails 8's modern busy handler
-```
-
-**Why this matters:**
-- Setting `timeout: 5000` (or higher) enables Rails 8's non-GVL-blocking busy handler
-- Without this, you get the old blocking behavior
-- **25x performance improvement** in concurrent scenarios
-
-### What Rails 8 Does Automatically
-
-When you connect to SQLite, Rails 8 automatically runs:
-
-```sql
-PRAGMA journal_mode = WAL;        -- Write-Ahead Logging
-PRAGMA synchronous = NORMAL;      -- Balanced durability
-PRAGMA mmap_size = 134217728;     -- 128MB memory-mapped I/O
-PRAGMA journal_size_limit = 67108864;  -- 64MB journal limit
-PRAGMA cache_size = -64000;       -- 64MB cache
-```
-
-**You don't configure these - Rails does it for you.**
-
-### The Busy Handler Breakthrough
-
-**The problem:**
-- SQLite uses database-level locking
-- When a write transaction is in progress, other writes must wait
-- Ruby's GVL (Global VM Lock) was blocked during waits
-- Result: Entire application freezes waiting for database
-
-**Rails 8 solution:**
-```ruby
-# Non-GVL-blocking busy handler with fair retry intervals
-# Releases GVL while waiting for lock
-# Other threads can continue processing
-```
-
-**Real-world impact:**
-```
-Old behavior (Rails 7):
-  - Write in progress
-  - 10 concurrent requests arrive
-  - All 10 block on GVL waiting for SQLite lock
-  - Application appears frozen
-  - Response times: 5000ms+
-
-New behavior (Rails 8):
-  - Write in progress
-  - 10 concurrent requests arrive
-  - Requests release GVL, wait with fair retry
-  - Other threads continue processing
-  - Response times: 50-200ms
-```
-
-**Performance numbers:**
-- 25x faster in concurrent write scenarios
-- 10x more throughput under load
-- Production-ready for moderate-traffic applications
-
-### SQLite Production Checklist
-
-```ruby
-# ✅ Ensure timeout is set correctly
-timeout: 5000  # Minimum for Rails 8 optimizations
-
-# ✅ Use WAL mode (automatic in Rails 8)
-# No configuration needed
-
-# ✅ Use proper database paths
-database: storage/production.sqlite3  # Persistent storage
-
-# ✅ Configure connection pool
-pool: <%= ENV.fetch("RAILS_MAX_THREADS") { 5 } %>
-
-# ✅ Use Litestream for backups (highly recommended)
-# See: Litestream documentation
 ```
 
 ## Development Workflow

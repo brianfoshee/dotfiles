@@ -2,6 +2,16 @@
 
 Reference guide for identifying and fixing common Rails anti-patterns during architecture reviews.
 
+## Contents
+
+- [1. Service Objects Everywhere](#1-service-objects-everywhere)
+- [2. Skinny Models, Fat Controllers](#2-skinny-models-fat-controllers)
+- [3. God Objects](#3-god-objects)
+- [4. Custom Controller Actions](#4-custom-controller-actions)
+- [5. Over-Engineering](#5-over-engineering)
+- [6. Missing Transaction Wrapping](#6-missing-transaction-wrapping)
+- [7. Testing Mocked Behavior](#7-testing-mocked-behavior)
+
 ## 1. Service Objects Everywhere
 
 **Problem**: Unnecessary abstraction layer between controllers and models.
