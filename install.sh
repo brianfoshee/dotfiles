@@ -54,6 +54,15 @@ link_file "$DOTFILES_DIR/nofrils-dark.vim" "$HOME/.vim/colors/nofrils-dark.vim"
 # Claude Code configuration
 link_file "$DOTFILES_DIR/claude" "$HOME/.claude"
 
+# Seed live settings from the tracked template on first install.
+# Claude Code rewrites settings.json at runtime, so never overwrite an existing one.
+if [ ! -e "$HOME/.claude/settings.json" ]; then
+    echo "Seeding settings.json from settings.json.example"
+    cp "$HOME/.claude/settings.json.example" "$HOME/.claude/settings.json"
+else
+    echo "Keeping existing settings.json"
+fi
+
 # oh-my-zsh theme (only if oh-my-zsh is installed)
 if [ -d "$HOME/.oh-my-zsh/themes" ]; then
     link_file "$DOTFILES_DIR/brianfoshee.zsh-theme" "$HOME/.oh-my-zsh/themes/brianfoshee.zsh-theme"
