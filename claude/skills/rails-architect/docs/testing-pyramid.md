@@ -2,6 +2,48 @@
 
 Production-proven testing strategy that prioritizes fast, reliable tests at appropriate levels, based on real Rails 8.2 application with 760+ tests.
 
+## Contents
+
+- [The Testing Pyramid](#the-testing-pyramid)
+- [When to Write Each Test Type](#when-to-write-each-test-type)
+  - [Model/Service Tests (test/models/, test/services/)](#modelservice-tests-testmodels-testservices)
+  - [Controller Tests (test/controllers/)](#controller-tests-testcontrollers)
+  - [Unit Tests (test/unit/)](#unit-tests-testunit)
+  - [Integration Tests (test/integration/)](#integration-tests-testintegration)
+  - [System Tests (test/system/)](#system-tests-testsystem)
+- [Test Maintenance Guidelines](#test-maintenance-guidelines)
+  - [1. Check Before Adding Tests](#1-check-before-adding-tests)
+  - [2. Prefer Expanding Existing Test Files](#2-prefer-expanding-existing-test-files)
+  - [3. Keep System Tests Minimal](#3-keep-system-tests-minimal)
+  - [4. Run Tests at Appropriate Level](#4-run-tests-at-appropriate-level)
+  - [5. All Tests Must Pass Before Committing](#5-all-tests-must-pass-before-committing)
+- [Testing JSON Fields (ActiveRecord Store)](#testing-json-fields-activerecord-store)
+- [Advanced Testing Patterns from Production Rails Apps](#advanced-testing-patterns-from-production-rails-apps)
+  - [Multi-Tenancy Test Setup](#multi-tenancy-test-setup)
+  - [Custom Fixture UUID Generation](#custom-fixture-uuid-generation)
+  - [VCR for External HTTP Requests](#vcr-for-external-http-requests)
+  - [Test Helper Modules](#test-helper-modules)
+  - [Testing Turbo Stream Responses](#testing-turbo-stream-responses)
+  - [Parallel Test Execution](#parallel-test-execution)
+  - [Using assert_changes for State Transitions](#using-assert_changes-for-state-transitions)
+  - [Testing Background Job Enqueuing](#testing-background-job-enqueuing)
+  - [Minimal System Tests](#minimal-system-tests)
+- [Testing Best Practices](#testing-best-practices)
+  - [Use Fixtures, Not Factories](#use-fixtures-not-factories)
+  - [Test One Behavior Per Test](#test-one-behavior-per-test)
+  - [Test Side Effects](#test-side-effects)
+  - [Use Descriptive Test Names](#use-descriptive-test-names)
+- [Test Coverage by Level](#test-coverage-by-level)
+- [Running Tests](#running-tests)
+  - [Local Development](#local-development)
+  - [Rails 8.2+ Local CI](#rails-82-local-ci)
+- [Common Anti-Patterns](#common-anti-patterns)
+  - [1. Testing Mocked Behavior](#1-testing-mocked-behavior)
+  - [2. Over-Using System Tests](#2-over-using-system-tests)
+  - [3. Not Testing Edge Cases](#3-not-testing-edge-cases)
+- [Benefits of This Approach](#benefits-of-this-approach)
+- [References](#references)
+
 ## The Testing Pyramid
 
 ```

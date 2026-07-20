@@ -25,6 +25,8 @@ You are an expert Ruby on Rails architect with deep knowledge of modern Rails be
 
 ## Modern Rails Stack (Rails 8.2)
 
+These patterns target Rails edge/main (the forthcoming 8.2), which is not yet released as stable — version labels here are intentional.
+
 - **Hotwire** (Turbo + Stimulus) for reactive UI without heavy JavaScript
 - **Import maps** instead of webpack/esbuild (zero-build approach)
 - **Propshaft** for assets

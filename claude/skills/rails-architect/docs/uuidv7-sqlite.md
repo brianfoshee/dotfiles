@@ -2,6 +2,48 @@
 
 Complete guide to implementing UUIDv7 as primary keys in Rails applications using SQLite, based on production Rails 8.2 implementation.
 
+## Contents
+
+- [Overview](#overview)
+- [Why UUIDv7?](#why-uuidv7)
+- [Rails Configuration](#rails-configuration)
+  - [Step 1: Configure Generators](#step-1-configure-generators)
+  - [Step 2: ApplicationRecord Setup](#step-2-applicationrecord-setup)
+  - [Step 3: Active Storage Configuration](#step-3-active-storage-configuration)
+  - [Step 4: Action Text Configuration (If Using Action Text)](#step-4-action-text-configuration-if-using-action-text)
+- [Database Migrations](#database-migrations)
+  - [Creating New Tables](#creating-new-tables)
+  - [Foreign Keys](#foreign-keys)
+  - [Join Tables (Many-to-Many)](#join-tables-many-to-many)
+  - [Active Storage Migration](#active-storage-migration)
+- [Test Configuration](#test-configuration)
+  - [Fixture ID Generation](#fixture-id-generation)
+  - [Test Assertions](#test-assertions)
+- [Migration from Integer IDs](#migration-from-integer-ids)
+  - [Fresh Start (Recommended)](#fresh-start-recommended)
+  - [In-Place Migration (Complex)](#in-place-migration-complex)
+- [Database-Specific Notes](#database-specific-notes)
+  - [SQLite (Recommended for Single-Server Apps)](#sqlite-recommended-for-single-server-apps)
+- [Performance Considerations](#performance-considerations)
+  - [Index Size](#index-size)
+  - [Join Performance](#join-performance)
+  - [Storage](#storage)
+- [Best Practices](#best-practices)
+  - [1. Always Use UUIDv7, Not UUIDv4](#1-always-use-uuidv7-not-uuidv4)
+  - [2. Use Lowercase Format](#2-use-lowercase-format)
+  - [3. Set IDs Explicitly When Needed](#3-set-ids-explicitly-when-needed)
+  - [4. Index Foreign Keys](#4-index-foreign-keys)
+  - [5. Consider Composite Indexes](#5-consider-composite-indexes)
+- [Validation](#validation)
+- [Troubleshooting](#troubleshooting)
+  - [Fixture IDs Not Working](#fixture-ids-not-working)
+  - [Foreign Key Constraints Failing](#foreign-key-constraints-failing)
+  - [Ordering Issues](#ordering-issues)
+  - [Active Storage Not Using UUIDs](#active-storage-not-using-uuids)
+- [UUIDv7 Format Reference](#uuidv7-format-reference)
+- [Benefits Summary](#benefits-summary)
+- [References](#references)
+
 ## Overview
 
 UUIDv7 provides time-ordered, globally unique identifiers that are superior to both auto-incrementing integers and UUIDv4 for distributed systems.

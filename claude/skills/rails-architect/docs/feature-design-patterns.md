@@ -2,6 +2,13 @@
 
 Production-proven patterns for implementing common Rails features. Each follows the core principles: REST resources, domain methods, event tracking, smart defaults.
 
+## Contents
+
+- [Adding "Starring" to a Resource](#adding-starring-to-a-resource)
+- [Adding Comments](#adding-comments)
+- [Adding Search](#adding-search)
+- [Adding Notifications](#adding-notifications)
+
 ## Adding "Starring" to a Resource
 
 ```ruby
