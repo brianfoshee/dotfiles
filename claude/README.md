@@ -26,7 +26,7 @@ ln -s ~/.dotfiles/claude ~/.claude
 
 #### New machine setup
 
-After symlinking this directory to `~/.claude`, copy the template into place:
+`install.sh` seeds `settings.json` from the template on first install (it won't overwrite an existing one). If you symlinked this directory manually instead, copy the template into place:
 
 ```bash
 cp ~/.claude/settings.json.example ~/.claude/settings.json
