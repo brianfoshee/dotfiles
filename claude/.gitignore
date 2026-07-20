@@ -1,5 +1,8 @@
+daemon/
+daemon.*
 debug/
 file-history/
+jobs/
 plugins/
 plans/
 projects/
