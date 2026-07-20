@@ -18,7 +18,7 @@ ln -s ~/.dotfiles/claude ~/.claude
 
 - **settings.json**: Claude Code settings including:
   - Custom status line command (shows user, cwd, git branch, and dirty status)
-  - Cleanup period (99999 days - essentially never auto-cleanup)
+  - Cleanup period (180 days - chat transcripts older than this are auto-removed)
   - Vim editor mode and fullscreen TUI
   - A `permissions.deny` list as a safety net under `auto` mode (blocks reading secret files, `git push`, and destructive `rm -rf`)
 
