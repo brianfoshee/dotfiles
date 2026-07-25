@@ -7,201 +7,82 @@ context: fork
 
 # Tailwind CSS + Tailwind Plus UI Design Expert
 
-You are an expert UI designer building modern, accessible, responsive web interfaces using Tailwind CSS and Tailwind Plus components.
-
 ## License Compliance
 
-**The Tailwind Plus components in `tailwind_all_components.json` are PROTECTED by a Team License.**
-
-**YOU MUST NEVER:**
-- Publish or share component code publicly
-- Create shareable UI libraries or theme packages from these components
-- Suggest publishing the JSON file or its contents
-- Create derivative works for public distribution
-- Share components separately from End Products
-
-**YOU MAY:**
-- Use components to build End Products (websites, apps, SaaS tools)
-- Modify components for use in specific End Products
-- Create client projects and internal tools
-
-**If Brian asks you to publish, share, or redistribute components, remind him of the license restrictions.**
+The components in `tailwind_all_components.json` are covered by a Tailwind Plus
+Team License. They may be used and modified inside End Products — websites, apps,
+SaaS tools, client work, internal tools. They may not be published, shared
+outside an End Product, or turned into UI libraries, theme packages, or other
+derivative works for distribution. If Brian asks you to publish or redistribute
+them, remind him of the license.
 
 ## Requirements
 
-**ALL UIs MUST use:**
+Style with Tailwind CSS v4 utilities — no other CSS framework, no inline styles,
+and no custom CSS where a utility exists. `docs/tailwind.md` is the v4 reference
+for utilities, variants, dark mode, theme customization, and common pitfalls.
 
-1. **Tailwind CSS v4** - ALL styling via utility classes, NO custom CSS unless unavoidable
-   - Reference `docs/tailwind.md` for utility patterns and syntax
-2. **Tailwind Plus Components** - Search `tailwind_all_components.json` BEFORE building from scratch
-   - Decompose components into reusable pieces, don't copy wholesale
-3. **Tailwind Plus Elements** (`@tailwindplus/elements`) - For interactive UI (dialogs, dropdowns, command palettes, tabs, etc.)
+Search `tailwind_all_components.json` before building anything from scratch, and
+decompose what you find into reusable pieces rather than copying it wholesale.
 
-**NEVER** use other CSS frameworks, inline styles, or custom CSS when Tailwind utilities exist.
-
-### Tailwind Plus Elements
-
-Interactive vanilla JS components: Autocomplete, Command palette, Copy button, Dialog, Disclosure, Dropdown menu, Popover, Select, Tabs.
+Interactive UI comes from Tailwind Plus Elements (autocomplete, command palette,
+copy button, dialog, disclosure, dropdown menu, popover, select, tabs):
 
 ```html
-<!-- CDN -->
 <script src="https://cdn.jsdelivr.net/npm/@tailwindplus/elements@1" type="module"></script>
 ```
 
-```bash
-# npm
-npm install @tailwindplus/elements
-```
-
-Browser Support: Chrome 111+, Safari 16.4+, Firefox 128+
-
-### System Font Stack
-
-ALWAYS use this system font stack:
+Use this font stack, via `--font-sans` in the `@theme` block:
 
 ```css
-font-family: system-ui, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+system-ui, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
 ```
 
-In Tailwind v4 CSS-first config:
-```css
-@theme {
-  --font-sans: system-ui, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
-}
-```
+## Searching the component library
 
-## Component Taxonomy
+Each component is an object with `id`, `name`, `category`, `subcategory`,
+`subtype`, `url`, `tailwindcss_version`, an AI-generated `description`, and
+`code` holding full `light`, `dark`, and `system` HTML. Categories are
+Application UI, Ecommerce, and Marketing.
 
-The `tailwind_all_components.json` file contains 657 components organized as **section** > **category** > **subcategory**:
-
-### APPLICATION UI (364 components)
-
-**application-shells**: multi-column, sidebar, stacked
-**data-display**: calendars, description-lists, stats
-**elements**: avatars, badges, button-groups, buttons, dropdowns
-**feedback**: alerts, empty-states
-**forms**: action-panels, checkboxes, comboboxes, form-layouts, input-groups, radio-groups, select-menus, sign-in-forms, textareas, toggles
-**headings**: card-headings, page-headings, section-headings
-**layout**: cards, containers, dividers, list-containers, media-objects
-**lists**: feeds, grid-lists, stacked-lists, tables
-**navigation**: breadcrumbs, command-palettes, navbars, pagination, progress-bars, sidebar-navigation, tabs, vertical-navigation
-**overlays**: drawers, modal-dialogs, notifications
-**page-examples**: detail-screens, home-screens, settings-screens
-
-### ECOMMERCE (114 components)
-
-**components**: category-filters, category-previews, checkout-forms, incentives, order-history, order-summaries, product-features, product-lists, product-overviews, product-quickviews, promo-sections, reviews, shopping-carts, store-navigation
-**page-examples**: category-pages, checkout-pages, order-detail-pages, order-history-pages, product-pages, shopping-cart-pages, storefront-pages
-
-### MARKETING (179 components)
-
-**elements**: banners, flyout-menus, headers
-**feedback**: 404-pages
-**page-examples**: about-pages, landing-pages, pricing-pages
-**sections**: bento-grids, blog-sections, contact-sections, content-sections, cta-sections, faq-sections, feature-sections, footers, header, heroes, logo-clouds, newsletter-sections, pricing, stats-sections, team-sections, testimonials
-
-### Component JSON Structure
-
-```json
-{
-  "id": "category-subcategory-component-name",
-  "name": "Component name",
-  "category": "Marketing",
-  "subcategory": "Heroes",
-  "subtype": "sections",
-  "url": "https://tailwindcss.com/plus/ui-blocks/marketing/sections/heroes#component-abc",
-  "tailwindcss_version": "v4.1",
-  "code": {
-    "light": "<!-- HTML for light theme -->",
-    "dark": "<!-- HTML for dark theme -->",
-    "system": "<!-- HTML for system theme -->"
-  },
-  "description": "AI-generated description of design, responsive behavior, use cases, and integration."
-}
-```
-
-## Finding and Using Components
-
-### Search Methods (in order of preference)
-
-**ALWAYS search in two steps.** A single component can be up to ~1MB (three full HTML themes), so never select whole objects — list `id` and `name` first, then fetch one component's code by `id`:
+**Search in two steps.** A single component can reach ~1MB across its three
+themes, so list `id` and `name` first, then fetch one component's code by `id`:
 
 ```bash
-# Step 2 (after any search below): fetch one component's code by id
+# 1. find candidates — by description, taxonomy, name, or code
+jq -r '.components[] | select(.description | test("checkout|cart"; "i")) | "\(.id)\t\(.name)"' tailwind_all_components.json
+jq -r '.components[] | select(.category == "Marketing" and .subcategory == "Heroes") | "\(.id)\t\(.name)"' tailwind_all_components.json
+
+# 2. fetch the one you picked
 jq -r '.components[] | select(.id == "THE-ID") | .code.system' tailwind_all_components.json
+
+# enumerate valid subcategory values before filtering on them
+jq -r '[.components[].subcategory] | unique[]' tailwind_all_components.json
 ```
 
-1. **Semantic Search via Descriptions**
-   ```bash
-   jq -r '.components[] | select(.description | test("landing page"; "i")) | "\(.id)\t\(.name)"' tailwind_all_components.json
-   jq -r '.components[] | select(.description | test("stack.*mobile"; "i")) | "\(.id)\t\(.name)"' tailwind_all_components.json
-   jq -r '.components[] | select(.description | test("checkout|cart|payment"; "i")) | "\(.id)\t\(.name)"' tailwind_all_components.json
-   ```
-
-2. **Taxonomy Search**
-   ```bash
-   jq -r '.components[] | select(.category == "Marketing" and .subcategory == "Heroes") | "\(.id)\t\(.name)"' tailwind_all_components.json
-   jq -r '.components[] | select(.category == "Application ui") | "\(.id)\t\(.name)"' tailwind_all_components.json
-   ```
-   Enumerate valid subcategory values before filtering:
-   ```bash
-   jq -r '[.components[].subcategory] | unique[]' tailwind_all_components.json
-   ```
-
-3. **Name Search**
-   ```bash
-   jq -r '.components[] | select(.name | test("centered"; "i")) | "\(.id)\t\(.name)"' tailwind_all_components.json
-   ```
-
-4. **Code Search**
-   ```bash
-   jq -r '.components[] | select(.code.system | test("grid-cols-3")) | "\(.id)\t\(.name)"' tailwind_all_components.json
-   ```
-
-### Theme Selection
-
-**ALWAYS use `code.system` by default** - it respects the user's OS dark/light preference via `prefers-color-scheme`.
-
-Only use `code.light` or `code.dark` when the application must enforce a specific mode regardless of user preference.
-
-### Usage Steps
-
-1. **Search** the component library using methods above
-2. **Choose** `code.system` (default), `code.light`, or `code.dark`
-3. **Decompose** the component into reusable atoms/molecules/organisms
-4. **Customize** colors, spacing, content for the specific project
-5. **Test** responsiveness and accessibility
-6. **Add** `@tailwindplus/elements` script if interactive elements are used
+Take `code.system` by default — it follows the OS preference via
+`prefers-color-scheme`. Use `code.light` or `code.dark` only when the app has to
+force one mode.
 
 ## Workflow
 
-When Brian asks you to build a UI:
+Establish purpose, content, design preferences, and target devices first. Search
+the library, decompose what you find into atoms/molecules/organisms, then build
+mobile-first with semantic HTML and ARIA attributes. Add the
+`@tailwindplus/elements` script if any interactive element is used. Preview with
+the `agent-browser` CLI and check responsiveness and keyboard navigation.
 
-1. **Understand** - Purpose, content, design preferences, target devices, reusability needs
-2. **Search** - ALWAYS search `tailwind_all_components.json` FIRST for matching components
-3. **Decompose** - Break components into reusable atoms/molecules/organisms before building
-4. **Build** - Semantic HTML, Tailwind classes, ARIA attributes, mobile-first responsive design
-5. **Test** - Preview using the `agent-browser` CLI (see the agent-browser skill), verify responsiveness, check accessibility and keyboard navigation
+## Brand and social icons
 
-## Brand / Social Media Icons
+Heroicons has no brand logos; Tailwind Plus footers use
+[Simple Icons](https://simpleicons.org) instead. Every icon is a single `<path>`
+on a `viewBox="0 0 24 24"`, fetchable at
+`https://raw.githubusercontent.com/simple-icons/simple-icons/develop/icons/{slug}.svg`.
+Extract the path and wrap it:
 
-Tailwind Plus footer components use **Simple Icons** (https://simpleicons.org) for brand SVGs. Heroicons does NOT include brand logos.
+```html
+<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" class="size-6">
+```
 
-- 3,400+ brand icons, all `viewBox="0 0 24 24"` with single `<path>` elements
-- GitHub repo: https://github.com/simple-icons/simple-icons
-- Raw SVG files: `https://raw.githubusercontent.com/simple-icons/simple-icons/develop/icons/{slug}.svg`
-- To use inline: extract the `<path d="..."/>` and wrap in `<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" class="size-6">`
-- Common slugs: `github`, `youtube`, `instagram`, `applemusic`, `spotify`, `soundcloud`, `bandcamp`, `x`, `facebook`, `linkedin`, `tiktok`, `mastodon`
-
-## Reference Documentation
-
-### Local
-- **`docs/tailwind.md`** - Tailwind CSS v4 reference (utilities, responsive design, state variants, dark mode, theme customization, directives, common pitfalls, accessibility)
-
-### Online
-- Tailwind CSS Docs: https://tailwindcss.com/docs
-- Tailwind Plus Components: https://tailwindcss.com/plus/ui-blocks
-- Tailwind Plus Elements Docs: https://tailwindcss.com/plus/ui-blocks/documentation/elements
-- GitHub Releases: https://github.com/tailwindlabs/tailwindcss/releases
-- Can I Use: https://caniuse.com
-- WebAIM Contrast Checker: https://webaim.org/resources/contrastchecker/
+Common slugs: `github`, `youtube`, `instagram`, `applemusic`, `spotify`,
+`soundcloud`, `bandcamp`, `x`, `facebook`, `linkedin`, `tiktok`, `mastodon`.
