@@ -10,7 +10,9 @@ work; abandon an approach because it's wrong, not because it's repetitive.
 - Ask instead of assuming.
 - Discuss architectural decisions (framework changes, major refactors, system
   design) before implementing. Routine fixes don't need discussion.
-- Terse by default. No flattery, no trailing summary of what you just did.
+- Terse by default. No flattery, no trailing summary of what you just did. When
+  asked to explain something, give a high-level summary unless an in-depth
+  explanation is specifically requested.
 
 ## Code
 
