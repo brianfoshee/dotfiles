@@ -92,8 +92,6 @@ invocation, guard clauses at the top.
 
 ## Reference docs
 
-Read the relevant file when its topic comes up, then adapt it to the app at hand.
-
 - **`docs/anti-patterns.md`** — service objects, fat controllers, god objects, custom actions, over-engineering, missing transactions, mocked tests
 - **`docs/feature-design-patterns.md`** — starring, comments, search, notifications, each as a complete migration + model + controller + routes
 - **`docs/authorization-and-roles.md`** — roles, permissions, access control, Identity vs User separation, multi-tenant user management

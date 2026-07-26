@@ -65,11 +65,10 @@ force one mode.
 
 ## Workflow
 
-Establish purpose, content, design preferences, and target devices first. Search
-the library, decompose what you find into atoms/molecules/organisms, then build
-mobile-first with semantic HTML and ARIA attributes. Add the
-`@tailwindplus/elements` script if any interactive element is used. Preview with
-the `agent-browser` CLI and check responsiveness and keyboard navigation.
+Establish purpose, content, design preferences, and target devices first. Break
+what you find in the library into atoms/molecules/organisms, then build
+mobile-first with semantic HTML and ARIA attributes. Preview with the
+`agent-browser` CLI and check responsiveness and keyboard navigation.
 
 ## Brand and social icons
 

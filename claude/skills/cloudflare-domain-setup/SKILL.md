@@ -7,15 +7,14 @@ allowed-tools: Read, Write, Edit, Glob, Grep, Bash
 # Cloudflare Domain Setup
 
 Domains on Cloudflare with infrastructure managed by the `cloudflare/cloudflare`
-Terraform provider v5. Detailed Terraform, worker JavaScript, and storage
-patterns live in `docs/`.
+Terraform provider v5.
 
 ## Deployment models
 
 **Static site + email** — two Workers and no origin server. A site Worker serves
 static HTML/CSS from `dist/` through Terraform's assets binding; an email Worker
-handles inbound mail via Email Routing, storing raw messages in R2 and queryable
-metadata in D1, and sending auto-replies. Backed by a D1 database, an R2 bucket,
+handles inbound mail via Email Routing, storing raw messages in R2 (cheap and
+durable) alongside queryable metadata in D1, and sending auto-replies. Backed by a D1 database, an R2 bucket,
 email routing, and zone settings.
 
 **App behind a Zero Trust tunnel** — traffic flows Client → Cloudflare edge →
@@ -122,7 +121,6 @@ on the origin with the tunnel token and verify connectivity and cert issuance.
 - **Separate workers per concern.** Site, email, and app proxy have different bindings and deploy independently.
 - **esbuild for the email worker only.** It's the one with a dependency (`mimetext`); the static workers have none.
 - **RFC 3834 auto-reply detection.** Check the `Auto-Submitted` header plus common anti-loop heuristics before replying.
-- **Dual storage for email.** R2 for raw messages (cheap, durable), D1 for queryable metadata.
 - **Workers.dev disabled.** Every worker sets `subdomain.enabled` and `subdomain.previews_enabled` to false so nothing is reachable at a workers.dev URL.
 - **Three-layer ACME passthrough.** Tunnel ingress, SSL ruleset, and Worker bypass are all required together when combining strict SSL, tunnels, and Workers.
 - **`network: host` for the tunnel accessory.** cloudflared must use host networking to reach services on localhost.
