@@ -14,8 +14,8 @@ Terraform provider v5.
 **Static site + email** — two Workers and no origin server. A site Worker serves
 static HTML/CSS from `dist/` through Terraform's assets binding; an email Worker
 handles inbound mail via Email Routing, storing raw messages in R2 (cheap and
-durable) alongside queryable metadata in D1, and sending auto-replies. Backed by a D1 database, an R2 bucket,
-email routing, and zone settings.
+durable) alongside queryable metadata in D1, and sending auto-replies. Backed by
+a D1 database, an R2 bucket, email routing, and zone settings.
 
 **App behind a Zero Trust tunnel** — traffic flows Client → Cloudflare edge →
 Worker (optional) → tunnel → origin server, so the origin needs no public IP. An

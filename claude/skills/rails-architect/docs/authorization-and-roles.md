@@ -1,55 +1,30 @@
-# Authorization and Roles in Rails Applications
+# Authorization and Roles
 
-Production-proven patterns for user roles and authorization in Rails applications, based on real-world implementations from 37signals/Basecamp.
+A small fixed role set plus explicit resource-access records, with most
+authorization falling out of association scoping rather than explicit checks.
+No policy objects, no permissions table.
 
 ## Contents
 
-- [Core Philosophy](#core-philosophy)
-- [Role Definition](#role-definition)
-  - [The Four Standard Roles](#the-four-standard-roles)
-  - [Database Schema](#database-schema)
-  - [Hierarchical Permissions](#hierarchical-permissions)
-- [Role Design Guidelines](#role-design-guidelines)
-  - [What Makes a Good Role](#what-makes-a-good-role)
-  - [What Makes a Bad Role](#what-makes-a-bad-role)
-- [Authorization Architecture](#authorization-architecture)
-  - [Identity vs User Separation](#identity-vs-user-separation)
-  - [Current Attributes Pattern](#current-attributes-pattern)
-  - [Authorization Layers](#authorization-layers)
-- [Authorization Patterns](#authorization-patterns)
-  - [Pattern 1: Role + Ownership](#pattern-1-role--ownership)
-  - [Pattern 2: Role + Hierarchy](#pattern-2-role--hierarchy)
-  - [Pattern 3: Association-Based Access (Implicit)](#pattern-3-association-based-access-implicit)
-  - [Pattern 4: Public Access Exception](#pattern-4-public-access-exception)
-  - [Pattern 5: Bearer Token API Access](#pattern-5-bearer-token-api-access)
-- [Resource-Level Access Control](#resource-level-access-control)
-  - [Board-Level Access Pattern](#board-level-access-pattern)
-  - [Access Management API](#access-management-api)
-  - [Involvement Levels (Optional Enhancement)](#involvement-levels-optional-enhancement)
-  - [Cascading Data Cleanup](#cascading-data-cleanup)
-- [Permission Methods on User](#permission-methods-on-user)
-- [Scoping Associations for Access](#scoping-associations-for-access)
-- [Testing Authorization](#testing-authorization)
-- [Common Anti-Patterns to Avoid](#common-anti-patterns-to-avoid)
-  - [❌ Anti-Pattern 1: Checking Permissions Everywhere](#-anti-pattern-1-checking-permissions-everywhere)
-  - [❌ Anti-Pattern 2: Too Many Roles](#-anti-pattern-2-too-many-roles)
-  - [❌ Anti-Pattern 3: Permissions in Database](#-anti-pattern-3-permissions-in-database)
-  - [❌ Anti-Pattern 4: Callbacks for Authorization](#-anti-pattern-4-callbacks-for-authorization)
-- [Key Architectural Insights](#key-architectural-insights)
+- [Roles](#roles)
+- [Identity vs User](#identity-vs-user)
+- [Four layers of authorization](#four-layers-of-authorization)
+- [Resource access records](#resource-access-records)
+- [Access cascades through associations](#access-cascades-through-associations)
+- [Public and API access](#public-and-api-access)
+- [Testing](#testing)
+- [What to avoid](#what-to-avoid)
 - [References](#references)
 
-## Core Philosophy
+## Roles
 
-**Simple roles + explicit resource access** beats complex permission systems.
+Four roles cover it: **owner** (account creator, one per account, can administer
+everyone but themselves), **admin** (can administer users and content, but not
+the owner), **member** (the default; administers only what they created), and
+**system** (per-account automation user, hidden from user lists, never
+notified).
 
-- **Minimal role set** - 3-4 roles maximum (owner, admin, member, system)
-- **Authorization through structure** - Use associations for access control, not conditionals
-- **Role + ownership combination** - Creators manage their content, admins manage everything
-- **Separation of concerns** - Identity (global) vs User (account-specific)
-
-## Role Definition
-
-### The Four Standard Roles
+The enum, the scopes, and every `can_*` predicate live in one concern:
 
 ```ruby
 # app/models/user/role.rb
@@ -69,52 +44,22 @@ module User::Role
     end
   end
 
-  def can_change?(other)
-    (admin? && !other.owner?) || other == self
-  end
+  def can_change?(other)     = (admin? && !other.owner?) || other == self
+  def can_administer?(other) = admin? && !other.owner? && other != self
 
-  def can_administer?(other)
-    admin? && !other.owner? && other != self
-  end
-
-  def can_administer_board?(board)
-    admin? || board.creator == self
-  end
-
-  def can_administer_card?(card)
-    admin? || card.creator == self
-  end
+  def can_administer_board?(board) = admin? || board.creator == self
+  def can_administer_card?(card)   = admin? || card.creator == self
 end
 ```
 
-The same module holds the enum, the active-aware scopes, the `admin?` cascade, and every `can_*` permission method. No separate `User::Administrator` module — keep all role/permission logic in one place.
-
-**owner** - Account creator with highest privileges
-- Only one per account (business logic enforced)
-- Can administer all resources and users except themselves
-- Automatically treated as admin for permission checks
-
-**admin** - Administrative users
-- Can administer boards, content, and other users
-- Cannot administer the owner
-- Full access to all administrative actions
-
-**member** - Regular users (default)
-- Standard access to resources they're granted access to
-- Can administer content they created
-- Cannot administer other users
-
-**system** - Internal automation user
-- Created automatically for each account
-- Used for automated actions (notifications, background jobs)
-- Excluded from user lists and never receives notifications
-
-### Database Schema
+Only `admin?` cascades — an owner is an admin for permission purposes. Leave
+`member?` alone: "is specifically a member" is a different question from "may
+act administratively," and cascading every predicate blurs it.
 
 ```ruby
 create_table :users do |t|
   t.uuid :account_id, null: false
-  t.uuid :identity_id  # Can be nil (deactivated users)
+  t.uuid :identity_id             # nil for deactivated users
   t.string :role, default: "member", null: false
   t.boolean :active, default: true, null: false
   t.datetime :verified_at
@@ -122,122 +67,55 @@ create_table :users do |t|
 end
 ```
 
-**Key design decisions:**
-- Role stored as string (enum in model)
-- Active state separate from role (can deactivate without losing role)
-- Identity optional (allows user records without active identity)
+Active state is separate from role, so deactivating doesn't discard which role
+someone had.
 
-### Hierarchical Permissions
+Good permission methods name a resource and combine role with ownership —
+`can_administer_board?(board)`. Bad ones enumerate capabilities
+(`can_edit_board_name?`), bind to a resource type (`board_admin`,
+`comment_moderator`), or encode billing state (`trial_member`, `paid_member`).
+Roles should be stable enough that new features never add one; anything that
+varies per resource belongs in an access record, and anything that varies over
+time belongs in the account.
 
-Override `admin?` so owners are admins for permission checks. Don't override `member?` — let the enum's predicate stand on its own; "is this user a member specifically" is a different question from "can this user act administratively." Cascading every role muddies that distinction.
+## Identity vs User
 
-```ruby
-# app/models/user/role.rb
-included do
-  def admin?
-    super || owner?  # Owner is also an admin
-  end
-end
-```
-
-## Role Design Guidelines
-
-### What Makes a Good Role
-
-✅ **Resource-oriented, not permission-oriented**
-```ruby
-# Good
-admin? && can_administer_board?(board)
-
-# Bad (too granular)
-can_edit_board_name? || can_change_board_color?
-```
-
-✅ **Combined with resource ownership**
-```ruby
-def can_administer_board?(board)
-  admin? || board.creator == self
-end
-```
-
-✅ **Minimal and stable**
-- Roles rarely change after account setup
-- New features don't require new roles
-- Role count stays constant as app grows
-
-### What Makes a Bad Role
-
-❌ **Granular permission-based roles**
-```ruby
-# Bad - too many roles
-enum :role, %i[ viewer editor publisher admin owner ]
-```
-
-❌ **Resource-specific roles**
-```ruby
-# Bad - roles tied to specific resources
-enum :role, %i[ board_admin card_creator comment_moderator ]
-```
-
-❌ **Temporary or conditional roles**
-```ruby
-# Bad - roles that change frequently
-enum :role, %i[ trial_member paid_member premium_member ]
-```
-
-**Instead:** Use account-level roles + explicit resource-level access grants.
-
-## Authorization Architecture
-
-### Identity vs User Separation
-
-**Critical pattern for multi-tenant SaaS:**
+For multi-tenant SaaS, split the global person from the per-account membership.
+One `Identity` (an email address, sessions, magic links) can own `User` records
+in several accounts, deactivation doesn't lose the identity, and cross-account
+features have somewhere to hang.
 
 ```ruby
-# Global user (email address)
 class Identity < ApplicationRecord
-  has_many :users  # Can have users in multiple accounts
+  has_many :users
   has_many :sessions
   has_many :magic_links
 end
 
-# Account-specific membership
 class User < ApplicationRecord
   belongs_to :account
   belongs_to :identity, optional: true
-
-  enum :role, %i[ owner admin member system ]
 end
 ```
 
-**Benefits:**
-- One person can join multiple accounts
-- Deactivation doesn't lose identity
-- Cross-account features (global notifications, staff access)
-
-### Current Attributes Pattern
+Setting the identity resolves the account-scoped user:
 
 ```ruby
-# app/models/current.rb
 class Current < ActiveSupport::CurrentAttributes
   attribute :session, :user, :identity, :account
 
   def identity=(identity)
-    super(identity)
-    if identity.present?
-      self.user = identity.users.find_by(account: account)
-    end
+    super
+    self.user = identity.users.find_by(account: account) if identity.present?
   end
 end
 ```
 
-**Cascade:** Setting identity → automatically finds User for current Account
+## Four layers of authorization
 
-### Authorization Layers
+**1. Account access** — the authenticated identity has an active user here.
 
-**Layer 1: Account-Level Access**
 ```ruby
-# app/controllers/concerns/authorization.rb
 module Authorization
   extend ActiveSupport::Concern
 
@@ -249,48 +127,7 @@ module Authorization
     def ensure_can_access_account
       redirect_to root_path if Current.user.blank? || !Current.user.active?
     end
-end
-```
 
-**Purpose:** Ensures authenticated identity has active User in current account.
-
-**Layer 2: Resource Scoping**
-```ruby
-# Controllers scope through Current.user associations
-class BoardsController < ApplicationController
-  def set_board
-    @board = Current.user.boards.find(params[:id])
-  end
-end
-```
-
-**Purpose:** Authorization through association traversal. No explicit checks needed.
-
-**Layer 3: Action-Level Permissions**
-```ruby
-class BoardsController < ApplicationController
-  before_action :ensure_permission_to_admin_board, only: %i[ update destroy ]
-
-  private
-    def ensure_permission_to_admin_board
-      head :forbidden unless Current.user.can_administer_board?(@board)
-    end
-end
-```
-
-**Purpose:** Fine-grained permission checks for destructive actions.
-
-**Layer 4: Role-Based Guards**
-```ruby
-# app/controllers/concerns/authorization.rb
-module Authorization
-  extend ActiveSupport::Concern
-
-  included do
-    before_action :ensure_can_access_account, if: :authenticated_account_access?
-  end
-
-  private
     def ensure_admin
       head :forbidden unless Current.user.admin?
     end
@@ -299,106 +136,35 @@ module Authorization
       head :forbidden unless Current.identity.staff?
     end
 end
+```
 
-# Usage in controllers
-class WebhooksController < ApplicationController
-  before_action :ensure_admin
+`ensure_admin` reads the account-scoped role; `ensure_staff` reads the
+cross-account identity.
+
+**2. Scoping** — the bulk of authorization, and the part that can't be
+forgotten. Loading through the user's associations means no access, no record:
+
+```ruby
+def set_board
+  @board = Current.user.boards.find(params[:id])  # RecordNotFound if no access
 end
 ```
 
-**Purpose:** Restrict entire controllers to specific roles. `ensure_admin` operates on `Current.user` (account-scoped role); `ensure_staff` operates on `Current.identity` (cross-account internal staff). Both live in the same `Authorization` concern alongside `ensure_can_access_account`.
-
-## Authorization Patterns
-
-### Pattern 1: Role + Ownership
+**3. Action permissions** — for destructive actions, on top of scoping:
 
 ```ruby
-# app/models/user/role.rb
-module User::Role
-  def can_administer_board?(board)
-    admin? || board.creator == self
-  end
+before_action :ensure_permission_to_admin_board, only: %i[ update destroy ]
 
-  def can_administer_card?(card)
-    admin? || card.creator == self
-  end
+def ensure_permission_to_admin_board
+  head :forbidden unless Current.user.can_administer_board?(@board)
 end
 ```
 
-**When to use:** Resource-level administration where creators manage their content.
+**4. Whole-controller guards** — `before_action :ensure_admin`.
 
-### Pattern 2: Role + Hierarchy
-
-```ruby
-def can_administer?(other_user)
-  admin? && !other_user.owner? && other_user != self
-end
-
-def can_change?(other_user)
-  (admin? && !other_user.owner?) || other_user == self
-end
-```
-
-**When to use:** User management where role hierarchy matters.
-
-### Pattern 3: Association-Based Access (Implicit)
+## Resource access records
 
 ```ruby
-# User model
-has_many :accesses
-has_many :boards, through: :accesses
-
-# Controller
-@board = Current.user.boards.find(params[:id])
-# Raises RecordNotFound if no access - no explicit check needed
-```
-
-**When to use:** Reading resources with managed access via join tables.
-
-**Benefits:**
-- Can't forget authorization check
-- Database enforces constraints
-- Simpler controller code
-- Automatic N+1 prevention opportunities
-
-### Pattern 4: Public Access Exception
-
-```ruby
-class Public::BoardsController < ApplicationController
-  allow_unauthenticated_access
-
-  def show
-    @board = Board.find_by_published_key(params[:board_id])
-    head :not_found unless @board&.published?
-  end
-end
-```
-
-**When to use:** Public sharing features that bypass normal authorization.
-
-### Pattern 5: Bearer Token API Access
-
-```ruby
-# app/controllers/concerns/api_authentication.rb
-def authenticate_by_bearer_token
-  if request.authorization.to_s.include?("Bearer")
-    authenticate_or_request_with_http_token do |token|
-      if identity = Identity.find_by_access_token(token)
-        Current.identity = identity
-      end
-    end
-  end
-end
-```
-
-**When to use:** API endpoints with token-based authentication.
-
-## Resource-Level Access Control
-
-### Board-Level Access Pattern
-
-```ruby
-# Migration
 create_table :accesses do |t|
   t.uuid :board_id, null: false
   t.uuid :user_id, null: false
@@ -407,31 +173,14 @@ create_table :accesses do |t|
   t.datetime :accessed_at
   t.timestamps
 end
-
-# Model
-class Board < ApplicationRecord
-  has_many :accesses, dependent: :destroy
-  has_many :users, through: :accesses
-
-  # All users vs selective
-  attribute :all_access, :boolean, default: true
-end
 ```
 
-**Two access modes:**
-
-**All-access boards** (`all_access: true`)
-- All active users automatically get access
-- Access records created/destroyed via callbacks
-
-**Selective boards** (`all_access: false`)
-- Explicit access grants required
-- Creator automatically gets access with "watching" involvement
-
-### Access Management API
+A board is either all-access (every active user gets an access record, managed
+by callbacks) or selective (explicit grants; the creator gets one with
+`watching`). Involvement separates seeing a board from being notified about it:
+`enum :involvement, { access_only: 0, watching: 1 }`.
 
 ```ruby
-# app/models/board/accessible.rb
 module Board::Accessible
   extend ActiveSupport::Concern
 
@@ -439,19 +188,12 @@ module Board::Accessible
     has_many :accesses, dependent: :destroy
   end
 
-  # Granting access
   def grant_access_to(users)
-    Array(users).each do |user|
-      accesses.find_or_create_by!(user: user, involvement: :access_only)
-    end
+    Array(users).each { |user| accesses.find_or_create_by!(user: user, involvement: :access_only) }
   end
 
-  # Revoking access
-  def revoke_access_from(users)
-    accesses.where(user: users).destroy_all
-  end
+  def revoke_access_from(users) = accesses.where(user: users).destroy_all
 
-  # Batch update
   def revise_access(granted:, revoked:)
     transaction do
       grant_access_to(granted) if granted.present?
@@ -459,38 +201,15 @@ module Board::Accessible
     end
   end
 
-  # Check access
-  def accessible_to?(user)
-    accesses.exists?(user: user)
-  end
-
-  def access_for(user)
-    accesses.find_by(user: user)
-  end
+  def accessible_to?(user) = accesses.exists?(user: user)
+  def access_for(user)     = accesses.find_by(user: user)
 end
 ```
 
-### Involvement Levels (Optional Enhancement)
+Revoking access has to clean up what it leaves behind — mentions, notifications,
+and watches that reference a board the user can no longer see:
 
 ```ruby
-# app/models/access.rb
-class Access < ApplicationRecord
-  belongs_to :board
-  belongs_to :user
-
-  enum :involvement, { access_only: 0, watching: 1 }
-end
-```
-
-**access_only** - Can view and interact
-**watching** - Receives notifications about activity
-
-### Cascading Data Cleanup
-
-When access is revoked, clean up related data:
-
-```ruby
-# app/models/access.rb
 class Access < ApplicationRecord
   after_destroy_commit :clean_inaccessible_data_later
 
@@ -499,44 +218,14 @@ class Access < ApplicationRecord
       CleanInaccessibleDataJob.perform_later(user, board)
     end
 end
-
-# Job removes:
-# - Mentions on cards/comments in that board
-# - Notifications about events in that board
-# - Watches on cards in that board
 ```
 
-## Permission Methods on User
+## Access cascades through associations
+
+Access is recorded at one level and inherited downward, so cards and comments
+need no access records of their own:
 
 ```ruby
-# app/models/user/role.rb
-module User::Role
-  # Resource administration
-  def can_administer_board?(board)
-    admin? || board.creator == self
-  end
-
-  def can_administer_card?(card)
-    admin? || card.creator == self
-  end
-
-  # User administration
-  def can_administer?(other)
-    admin? && !other.owner? && other != self
-  end
-
-  def can_change?(other)
-    (admin? && !other.owner?) || other == self
-  end
-end
-```
-
-**Pattern:** Descriptive method names that combine role + context. Account-wide admin actions don't get their own predicate — they use `before_action :ensure_admin` from the `Authorization` concern, which is enough since `admin?` already includes owners.
-
-## Scoping Associations for Access
-
-```ruby
-# app/models/user/accessor.rb
 module User::Accessor
   extend ActiveSupport::Concern
 
@@ -549,176 +238,69 @@ module User::Accessor
 end
 ```
 
-**Pattern:** Cascade access through associations.
-- Board access → Card access → Comment access
-- No card-level or comment-level access records needed
-
-## Testing Authorization
+## Public and API access
 
 ```ruby
-# test/models/user_test.rb
-class UserTest < ActiveSupport::TestCase
-  test "admin can administer other users except owner" do
-    admin = users(:admin)
-    member = users(:member)
-    owner = users(:owner)
+class Public::BoardsController < ApplicationController
+  allow_unauthenticated_access
 
-    assert admin.can_administer?(member)
-    assert_not admin.can_administer?(owner)
-    assert_not admin.can_administer?(admin)  # Can't administer self
-  end
-
-  test "creator can administer their own board" do
-    member = users(:member)
-    board = boards(:created_by_member)
-
-    assert member.can_administer_board?(board)
-  end
-
-  test "member cannot administer boards they didn't create" do
-    member = users(:member)
-    board = boards(:created_by_admin)
-
-    assert_not member.can_administer_board?(board)
-  end
-end
-
-# test/controllers/boards_controller_test.rb
-class BoardsControllerTest < ActionDispatch::IntegrationTest
-  test "member cannot destroy board they didn't create" do
-    sign_in_as :member
-    board = boards(:created_by_admin)
-
-    delete board_url(board)
-    assert_response :forbidden
-  end
-
-  test "admin can destroy any board" do
-    sign_in_as :admin
-    board = boards(:created_by_member)
-
-    assert_difference("Board.count", -1) do
-      delete board_url(board)
-    end
+  def show
+    @board = Board.find_by_published_key(params[:board_id])
+    head :not_found unless @board&.published?
   end
 end
 ```
 
-## Common Anti-Patterns to Avoid
-
-### ❌ Anti-Pattern 1: Checking Permissions Everywhere
-
 ```ruby
-# Bad - scattered permission checks
-def show
-  @board = Board.find(params[:id])
-  raise Forbidden unless @board.accessible_to?(Current.user)
-end
+def authenticate_by_bearer_token
+  return unless request.authorization.to_s.include?("Bearer")
 
-def update
-  @board = Board.find(params[:id])
-  raise Forbidden unless Current.user.can_administer_board?(@board)
-end
-```
-
-**Better - Authorization through scoping:**
-```ruby
-before_action :set_board
-before_action :ensure_can_administer, only: %i[ update destroy ]
-
-private
-  def set_board
-    @board = Current.user.boards.find(params[:id])  # Implicit authorization
+  authenticate_or_request_with_http_token do |token|
+    Current.identity = Identity.find_by_access_token(token)
   end
-
-  def ensure_can_administer
-    head :forbidden unless Current.user.can_administer_board?(@board)
-  end
-```
-
-### ❌ Anti-Pattern 2: Too Many Roles
-
-```ruby
-# Bad - role explosion
-enum :role, %i[
-  viewer
-  commenter
-  editor
-  publisher
-  moderator
-  admin
-  super_admin
-  owner
-]
-```
-
-**Better - Minimal roles + resource access:**
-```ruby
-enum :role, %i[ owner admin member system ]
-
-# Use resource-level access grants
-has_many :board_accesses
-```
-
-### ❌ Anti-Pattern 3: Permissions in Database
-
-```ruby
-# Bad - granular permissions table
-create_table :permissions do |t|
-  t.uuid :user_id
-  t.string :resource_type
-  t.uuid :resource_id
-  t.string :action  # "create", "read", "update", "delete"
 end
 ```
 
-**Better - Structural authorization:**
+## Testing
+
+Permission predicates are model tests; the enforcement is a controller test.
+Cover the negative cases — self-administration and the owner exception are where
+these go wrong.
+
 ```ruby
-# Role-based permissions in code
-def can_administer_board?(board)
-  admin? || board.creator == self
+test "admin can administer other users except owner and self" do
+  admin = users(:admin)
+  assert admin.can_administer?(users(:member))
+  assert_not admin.can_administer?(users(:owner))
+  assert_not admin.can_administer?(admin)
 end
 
-# Resource access via join table
-has_many :boards, through: :accesses
-```
-
-### ❌ Anti-Pattern 4: Callbacks for Authorization
-
-```ruby
-# Bad - authorization in callbacks
-class Card < ApplicationRecord
-  before_update :ensure_can_update
-
-  private
-    def ensure_can_update
-      raise Forbidden unless Current.user.admin?
-    end
+test "member cannot destroy a board they didn't create" do
+  sign_in_as :member
+  delete board_url(boards(:created_by_admin))
+  assert_response :forbidden
 end
 ```
 
-**Better - Authorization in controller:**
-```ruby
-class CardsController < ApplicationController
-  before_action :ensure_can_administer, only: %i[ update destroy ]
-end
-```
+## What to avoid
 
-**Reason:** Authorization is a controller concern, not a model concern.
+**Refetching then checking.** `Board.find(params[:id])` followed by a manual
+`accessible_to?` is a check you can forget. Scope through `Current.user`
+instead, and reserve explicit predicates for administrative actions.
 
-## Key Architectural Insights
+**Role explosion.** `viewer / commenter / editor / publisher / moderator /
+admin / super_admin / owner` is a permission system pretending to be roles.
+Four roles plus access records express the same thing and stay constant.
 
-1. **Authorization by query scoping** - `Current.user.boards.find(id)` is authorization
-2. **Minimal roles + explicit access** - Simple role enum + join table for resource access
-3. **Identity ≠ User** - Global identity can have users in multiple accounts
-4. **No policy objects needed** - Vanilla Rails with concerns is sufficient
-5. **Structure over conditionals** - Use associations for access, not if statements
-6. **Permission methods on User** - `can_administer_board?` not policy classes
-7. **Cascading cleanup** - Revoking access cleans up all related data
-8. **Owner can't administer themselves** - Prevents accidental self-removal
+**A permissions table.** Rows of `(user, resource_type, resource_id, action)`
+move authorization logic into data, where it can't be read or tested as a unit.
+Keep the rules in code and the grants in a join table.
+
+**Authorization in model callbacks.** `before_update :ensure_can_update` fires
+in tests, console sessions, and background jobs where `Current.user` isn't what
+you think. Authorization is a request-time concern; keep it in controllers.
 
 ## References
 
-- [Rails Authorization Patterns](https://guides.rubyonrails.org/action_controller_overview.html#filters)
-- [Enum Documentation](https://api.rubyonrails.org/classes/ActiveRecord/Enum.html)
-- [Current Attributes](https://api.rubyonrails.org/classes/ActiveSupport/CurrentAttributes.html)
+- [Controller filters](https://guides.rubyonrails.org/action_controller_overview.html#filters)
+- [Enum](https://api.rubyonrails.org/classes/ActiveRecord/Enum.html) · [Current Attributes](https://api.rubyonrails.org/classes/ActiveSupport/CurrentAttributes.html)

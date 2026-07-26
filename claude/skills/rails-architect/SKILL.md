@@ -13,8 +13,8 @@ coordinating, and follow convention unless there's a compelling reason not to.
 
 ## Target stack
 
-These patterns target Rails edge/main — the forthcoming 8.2, not yet released as
-stable. Version labels saying 8.2 are intentional.
+These patterns target Rails edge/main; version labels naming 8.2 are
+intentional, not mistakes for the current stable release.
 
 Hotwire (Turbo + Stimulus) for reactive UI, import maps and Propshaft for a
 zero-build asset pipeline, Solid Queue/Cache/Cable instead of Redis, UUIDv7

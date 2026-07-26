@@ -28,6 +28,11 @@ module Card::Starrable
     track_event :starred, creator: user
   end
 
+  def unstar(user: Current.user)
+    stars.find_by(user: user)&.destroy
+    track_event :unstarred, creator: user
+  end
+
   def starred_by?(user)
     stars.exists?(user: user)
   end
@@ -98,7 +103,7 @@ class Notification < ApplicationRecord
   belongs_to :event
   belongs_to :recipient, class_name: "User"
 
-  enum state: { unread: 0, read: 1 }
+  enum :state, { unread: 0, read: 1 }
 end
 
 # Event callback

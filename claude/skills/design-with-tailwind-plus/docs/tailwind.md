@@ -14,7 +14,7 @@ A working reference for Tailwind CSS v4: CSS-first configuration, directives, va
 - [Functions](#functions)
 - [Additional Utilities](#additional-utilities)
 - [Colors](#colors)
-- [Quick Reference](#quick-reference)
+- [Spacing Scale](#spacing-scale)
 - [Common Pitfalls](#common-pitfalls)
 - [Accessibility](#accessibility)
 - [Resources](#resources)
@@ -52,7 +52,8 @@ Then import Tailwind in your main CSS file — this single line replaces v3's `@
 ```html
 <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
 ```
-NEVER use `cdn.tailwindcss.com` — it only serves Tailwind v3.
+The v4 CDN is `@tailwindcss/browser@4`; the older `cdn.tailwindcss.com` serves
+Tailwind v3 only.
 
 ---
 
@@ -370,19 +371,9 @@ Shades: `50` is lightest, `500` the base tone, `950` darkest. Apply opacity with
 
 ---
 
-## Quick Reference
+## Spacing scale
 
-**Layout:** `flex` `grid` `block` `inline-block` `hidden` `container` `mx-auto`
-**Flexbox:** `justify-{start|center|end|between|around}` `items-{start|center|end|stretch}` `flex-{row|col}` `flex-wrap`
-**Grid:** `grid-cols-{n}` `col-span-{n}` `gap-{size}` `gap-x-{size}` `gap-y-{size}`
-**Spacing:** `p-{size}` `px/py/pt/pr/pb/pl-{size}` `m-{size}` `mx/my/mt/mr/mb/ml-{size}`
-**Sizing:** `w-{size}` `h-{size}` `max-w-{size}` `min-h-{size}`
-**Typography:** `text-{size}` `font-{weight}` `leading-{height}` `text-{left|center|right}` `uppercase`
-**Colors:** `text-{color}-{shade}` `bg-{color}-{shade}` `border-{color}-{shade}`
-**Borders:** `border` `border-{size}` `border-{t|r|b|l}` `rounded` `rounded-{size}`
-**Effects:** `shadow-{size}` `opacity-{value}` `transition` `duration-{time}`
-
-**Spacing scale:**
+Sizes are multiples of `--spacing` (default `0.25rem`), so `p-4` is `1rem`:
 
 | Class | Value | | Class | Value |
 |-------|-------|---|-------|-------|
