@@ -48,12 +48,20 @@ create_table :credentials, id: :string do |t|
 end
 ```
 
-`credential_id` and `public_key` are binary because that's what the gem hands
-back; storing them as strings breaks lookup (see [Troubleshooting](#troubleshooting)).
+Both `credential_id` and `public_key` arrive from the gem as base64url
+*strings*, not bytes. `credential_id` gets decoded on write so lookups match
+(see [Troubleshooting](#troubleshooting)); `public_key` is stored as handed
+over and round-trips fine, since `verify` decodes it again. `raw_public_key` is
+the accessor that returns actual bytes if you'd rather keep the column
+genuinely binary.
 
 ```ruby
 class User < ApplicationRecord
   has_many :credentials, dependent: :destroy
+
+  # Opaque handle sent to the authenticator — never the primary key.
+  # add_column :users, :webauthn_id, :string, null: false
+  before_create { self.webauthn_id ||= WebAuthn.generate_user_id }
 
   def passkey_registered? = credentials.exists?
 
@@ -210,7 +218,10 @@ class Webauthn::RegistrationController < ApplicationController
     user = current_user
 
     options = WebAuthn::Credential.options_for_create(
-      user: { id: user.id, name: user.email, display_name: user.name },
+      # user.id must be valid unpadded base64url — the browser decodes it.
+      # Give the model a webauthn_id column from WebAuthn.generate_user_id
+      # rather than passing a raw primary key; an integer id fails outright.
+      user: { id: user.webauthn_id, name: user.email, display_name: user.name },
       exclude: user.credentials.pluck(:credential_id).map { |id|
         Base64.urlsafe_encode64(id, padding: false)
       },
@@ -291,21 +302,26 @@ class Webauthn::AuthenticationController < ApplicationController
       sign_count: credential.sign_count
     )
 
-    # A counter that fails to advance suggests a cloned authenticator.
-    if webauthn_credential.sign_count > 0 &&
-       webauthn_credential.sign_count <= credential.sign_count
-      credential.flag_as_compromised!
-      return render json: { error: "Invalid authenticator" }, status: :unauthorized
-    end
-
     credential.update!(sign_count: webauthn_credential.sign_count, last_used_at: Time.current)
     login(credential.user)
     render json: { success: true, redirect_url: jobs_path }
+
+  # A counter that fails to advance suggests a cloned authenticator. `verify`
+  # raises this itself — rescue it ahead of the generic WebAuthn::Error, or the
+  # credential never gets flagged.
+  rescue WebAuthn::SignCountVerificationError
+    credential.flag_as_compromised!
+    render json: { error: "Invalid authenticator" }, status: :unauthorized
   rescue WebAuthn::Error => e
     render json: { error: e.message }, status: :unauthorized
   end
 end
 ```
+
+Don't hand-roll the clone check. `verify` already compares the signature
+counter and raises `WebAuthn::SignCountVerificationError`, and its check is
+stricter than the obvious one — it also catches a new count of 0 against a
+stored count above 0, which a `sign_count > 0` guard skips.
 
 The gem verifies origin and RP ID hash for you — both must match exactly,
 including scheme, port, and subdomain.
@@ -392,9 +408,17 @@ end
 `rp_id` is a bare domain — no scheme, no port.
 
 Optionally add the `fido_metadata` gem to turn AAGUIDs into real device names
-("YubiKey 5 NFC" rather than "Security Key"). Point it at `Rails.cache`; it
-fetches from FIDO MDS on first sight of an AAGUID and caches for 24 hours.
-Resolve it off the request:
+("YubiKey 5 NFC" rather than "Security Key"). It needs an explicit cache
+backend or `Store` raises at runtime, and it caches until the MDS blob's own
+`nextUpdate` — typically weeks, not a fixed day:
+
+```ruby
+# config/initializers/fido_metadata.rb
+FidoMetadata.configure { |config| config.cache_backend = Rails.cache }
+```
+
+Resolve it off the request. `fetch_statement` returns nil for an unknown
+AAGUID rather than raising, so guard on the return value:
 
 ```ruby
 class FetchAuthenticatorMetadataJob < ApplicationJob
@@ -403,39 +427,47 @@ class FetchAuthenticatorMetadataJob < ApplicationJob
     return if credential.aaguid.blank?
 
     statement = FidoMetadata::Store.new.fetch_statement(aaguid: credential.aaguid)
-    credential.update!(
-      device_name: statement.description,
-      metadata: { description: statement.description,
-                  is_fido_certified: statement.fido_certified? }
-    )
-  rescue KeyError
-    credential.update!(device_name: "Unknown Authenticator")
+
+    if statement
+      credential.update!(device_name: statement.description,
+                         metadata: { description: statement.description })
+    else
+      credential.update!(device_name: "Unknown Authenticator")
+    end
   end
 end
 ```
+
+Certification status isn't on the statement — it lives on the entry's
+`status_reports`. And under the default `attestation: none`, `aaguid` comes
+back zeroed, so this job is a no-op for most registrations.
 
 ## Rate limiting
 
 Rails' own `ActionController::RateLimiting` is enough; rack-attack isn't needed.
 
-```ruby
-# config/environments/production.rb
-config.action_controller.rate_limiting_cache_store = :solid_cache_store
-
-# app/controllers/application_controller.rb
-rescue_from ActionController::RateLimitExceeded do |exception|
-  respond_to do |format|
-    format.json do
-      render json: { error: "Rate limit exceeded.", retry_after: exception.retry_after },
-             status: :too_many_requests
-    end
-    format.html do
-      flash[:alert] = "Too many attempts. Try again in #{exception.retry_after} seconds."
-      redirect_back fallback_location: root_path
-    end
-  end
-end
 ```
+def rate_limit(to:, within:, by: -> { request.remote_ip },
+               with: -> { raise TooManyRequests },
+               store: cache_store, name: nil, scope: nil, **options)
+```
+
+Exceeding the limit raises `ActionController::TooManyRequests` (Rails 8.1; on
+8.0 the default was `-> { head :too_many_requests }` and the class didn't
+exist). Rails' exception wrapper already maps it to a 429, so no `rescue_from`
+is needed for the status code alone. It's a bare exception class — there is no
+`retry_after` on it and no message payload, so a custom response has to come
+from `with:` rather than from reading the exception:
+
+```ruby
+rate_limit to: 10, within: 15.minutes,
+           by: -> { request.remote_ip },
+           with: -> { render json: { error: "Too many attempts." },
+                             status: :too_many_requests }
+```
+
+The backing store is `config.action_controller.cache_store`, or `store:` per
+call — there is no `rate_limiting_cache_store` setting.
 
 ## Testing with a virtual authenticator
 
@@ -534,8 +566,9 @@ class PasskeyAuthenticationTest < ApplicationSystemTestCase
   end
 
   test "expired magic link is rejected" do
-    travel(31.minutes) { @token = @user.generate_magic_link_token }
-    visit magic_link_path(@token)
+    token = @user.generate_magic_link_token
+    travel 31.minutes                  # mint first, then advance — not travel { mint }
+    visit magic_link_path(token)
     assert_text "Invalid or expired setup link"
   end
 end
@@ -550,9 +583,10 @@ Decode on the way in: `Base64.urlsafe_decode64(webauthn_credential.id)`.
 **`'challenge' contains invalid base64url data`.** `config.encoding` is
 `:base64`; it must be `:base64url`.
 
-**`excludeCredentials contains invalid base64url data`.** The exclusion list
-takes encoded strings, not the raw binary column — map it through
-`Base64.urlsafe_encode64(id, padding: false)`.
+**`'excludeCredentials' contains PublicKeyCredentialDescriptorJSON with invalid
+base64url data in 'id'`.** The exclusion list takes encoded strings, not the raw
+binary column — map it through `Base64.urlsafe_encode64(id, padding: false)`.
+The browser decodes unpadded, so `padding: false` is required, not cosmetic.
 
 **`SecurityError: This is an invalid domain`.** RP ID is an IP or doesn't match
 the origin host. Set `Capybara.server_host = "localhost"` and `rp_id:
@@ -596,8 +630,12 @@ await PublicKeyCredential.signalAllAcceptedCredentials?.({ rpId, userId, allAcce
 ```
 
 **Related origin requests** share passkeys across domains (`example.com` and
-`example.co.uk`) via a `.well-known/webauthn` file served from the `rp_id`
-domain, listing the other origins. The RP ID domain itself isn't listed.
+`example.co.uk`) via a `.well-known/webauthn` file served over HTTPS from the
+`rp_id` domain as `application/json`, with a top-level `origins` array. The RP
+ID domain itself isn't listed — its own origins pass the ordinary check and
+never consume budget. Clients need only support five registrable origin
+*labels*, and the limit counts labels rather than entries, so many origins
+across few suffixes are fine.
 
 ## Gems and routes
 

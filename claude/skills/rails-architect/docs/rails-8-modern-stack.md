@@ -26,10 +26,12 @@ Puma plugins fold the CSS watcher and the job worker into the web process, so
 `bin/dev` is just `rails server` and there's no Procfile or Foreman:
 
 ```ruby
-# config/puma.rb
+# config/puma.rb — as generated on main (8.2)
 plugin :tmp_restart
+plugin :solid_queue if ![ "", "false", "0" ].include?(ENV["SOLID_QUEUE_IN_PUMA"].to_s.downcase)
+
+# from the tailwindcss-rails gem, not the Rails app template
 plugin :tailwindcss if ENV.fetch("RAILS_ENV", "development") == "development"
-plugin :solid_queue if ENV["SOLID_QUEUE_IN_PUMA"] || ENV.fetch("RAILS_ENV", "development") == "development"
 ```
 
 ```ruby
@@ -38,13 +40,18 @@ plugin :solid_queue if ENV["SOLID_QUEUE_IN_PUMA"] || ENV.fetch("RAILS_ENV", "dev
 exec "./bin/rails", "server", *ARGV
 ```
 
-In production, set `SOLID_QUEUE_IN_PUMA=true` to run jobs in the web process, or
-leave it unset and run `bin/jobs` separately.
+Mind the polarity, which flipped between releases. On 8.1 the generated line is
+`plugin :solid_queue if ENV["SOLID_QUEUE_IN_PUMA"]` — opt-in, so jobs run in the
+web process only when you ask. On 8.2 it is opt-*out*: unset loads the plugin.
+To run `bin/jobs` as its own process on 8.2, set `SOLID_QUEUE_IN_PUMA=false`
+explicitly, or you get a supervisor in both places.
 
 ## Local CI runner
 
-`bin/ci` (Rails 8.1) runs the CI pipeline locally from a Ruby config, so the
-same definition drives local runs and GitHub Actions:
+`bin/ci` runs the CI pipeline locally from a Ruby config, so the same definition
+drives local runs and GitHub Actions. The runner and `step` are 8.1; the
+`group … parallel:` DSL below is 8.2 (#56774) and was not backported, so on 8.1
+write flat `step` calls instead:
 
 ```ruby
 # config/ci.rb
@@ -69,10 +76,13 @@ copying — a broken `db/seeds.rb` usually isn't discovered until it's needed.
 
 ## Framework defaults
 
+`load_defaults "8.2"` already sets all of these — they're listed to explain the
+behavior, not as lines to write:
+
 ```ruby
-# config/application.rb
 config.active_job.enqueue_after_transaction_commit = true
 config.active_storage.analyze = :immediately
+config.action_controller.forgery_protection_verification_strategy = :header_only
 ```
 
 `enqueue_after_transaction_commit` holds jobs enqueued inside a transaction
@@ -83,21 +93,26 @@ save.
 
 ### CSRF via Sec-Fetch-Site (8.2)
 
+`:header_only` is the 8.2 default: forgery protection verifies the browser's
+`Sec-Fetch-Site` header and needs no `authenticity_token` form param. Migrating
+an existing app is where you'd override it, falling back to token verification:
+
 ```ruby
-config.action_controller.forgery_protection_verification_strategy = :header_only
+config.action_controller.forgery_protection_verification_strategy = :header_or_legacy_token
 ```
 
-`:header_only` verifies the browser's `Sec-Fetch-Site` header and needs no
-`authenticity_token` form param. `:header_or_legacy_token` falls back to token
-verification, for migrating an existing app. A companion
-`config.action_controller.forgery_protection_trusted_origins` takes an allowlist
-array.
+A companion `config.action_controller.forgery_protection_trusted_origins` takes
+an allowlist array. The same change deprecates `InvalidAuthenticityToken` in
+favor of `InvalidCrossOriginRequest`, so rescue clauses naming the old constant
+need updating. (#56350)
 
 ### SSL
 
-New 8.2 apps don't generate `config.assume_ssl` or `config.force_ssl` in
-`production.rb`, so Kamal deploys work without SSL configured. Behind an
-SSL-terminating proxy, set them explicitly:
+Since 8.1 (#56010), the generator *comments out* `config.assume_ssl` and
+`config.force_ssl` in `production.rb` when the app is generated with Kamal, so
+Kamal deploys work out of the box. They're still emitted, just inert — and with
+`--skip-kamal` they're generated active. Behind an SSL-terminating proxy,
+uncomment both:
 
 ```ruby
 # config/environments/production.rb
@@ -108,7 +123,8 @@ config.force_ssl = true
 ## Combined credentials
 
 `Rails.app.creds` (8.2) checks ENV first, then falls back to encrypted
-credentials:
+credentials — with a dotenv layer in between when running in development.
+`Rails.app.envs` reads the ENV layer alone.
 
 ```ruby
 Rails.app.creds.require(:stripe_api_key)                   # raises if missing from both
@@ -275,8 +291,11 @@ Rails APIs at the call site — `Rails.cache.fetch`, `perform_later`,
 config.active_job.queue_adapter = :solid_queue
 config.solid_queue.connects_to = { database: { writing: :queue } }
 config.cache_store = :solid_cache_store
-config.action_controller.rate_limiting_cache_store = :solid_cache_store
 ```
+
+`ActionController::RateLimiting` reads
+`config.action_controller.cache_store`, falling back to `config.cache_store`,
+so Solid Cache backs rate limiting without extra configuration.
 
 ```yaml
 # config/queue.yml
@@ -304,8 +323,10 @@ Cache is disk-backed, so it survives restarts and isn't bounded by memory.
 
 ## Gems and layout
 
+8.2 is unreleased, so there is no version to pin — track main directly:
+
 ```ruby
-gem "rails", "~> 8.2.0"
+gem "rails", github: "rails/rails", branch: "main"
 gem "sqlite3", ">= 2.1"
 gem "solid_queue"
 gem "solid_cache"

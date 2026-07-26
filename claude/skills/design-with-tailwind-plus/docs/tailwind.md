@@ -28,6 +28,7 @@ Requires Node.js 20 or higher. Tailwind v4 ships as separate packages per build 
 - `tailwindcss` — core
 - `@tailwindcss/vite` — Vite plugin
 - `@tailwindcss/postcss` — PostCSS plugin (in v3 the `tailwindcss` package itself was the PostCSS plugin; that moved here)
+- `@tailwindcss/webpack` — Webpack plugin
 - `@tailwindcss/cli` — standalone CLI
 
 **Vite (recommended):**
@@ -274,12 +275,16 @@ Every theme value is also a plain CSS variable, usable directly in custom CSS:
 
 **`@theme { … }`** — defines design tokens; see [CSS-First Customization](#css-first-customization).
 
-**`@layer base | components | utilities`** — organizes custom CSS by cascade layer (specificity increases base → components → utilities):
+**`@layer base | components`** — organizes custom CSS by native cascade layer, which controls layer precedence (later layers win) rather than specificity:
 ```css
 @layer base { h1 { @apply text-3xl font-bold; } }
 @layer components { .btn { @apply px-4 py-2 rounded font-semibold; } }
-@layer utilities { .content-auto { content-visibility: auto; } }
 ```
+
+v4 uses native cascade layers instead of hijacking `@layer`, so custom
+*utilities* go through `@utility` below — not `@layer utilities`. The v3 form
+still emits the class, but no variant ever attaches to it, so `hover:` and `md:`
+silently do nothing.
 
 **`@apply`** — inlines existing utilities into custom CSS. Use it for third-party overrides, semantic class names required by a CMS/templating language, or base element styles. Do NOT use it as the default styling approach or merely to make markup look "cleaner" — that defeats the utility-first model. Prefer components (React/Vue/partials) or loops for reuse.
 
@@ -343,7 +348,7 @@ Utilities that are easy to overlook:
 - **Text shadow:** `text-shadow-2xs` `text-shadow-xs` `text-shadow-sm` `text-shadow-md` `text-shadow-lg`, colorable (`text-shadow-sky-300`) and with opacity (`text-shadow-lg/50`).
 - **Colored drop shadow:** `drop-shadow-<color>` and `drop-shadow-<color>/<opacity>`.
 - **Masks:** composable `mask-*` utilities — edge gradients (`mask-t-from-50%`, `mask-b-to-black`) and radial masks (`mask-radial-from-transparent`, `mask-radial-at-center`).
-- **Scrollbars:** width `scrollbar-thin` / `scrollbar-none` / `scrollbar-auto`, colors `scrollbar-thumb-*` / `scrollbar-track-*`, and `scrollbar-gutter-stable` / `-both` to prevent layout shift.
+- **Scrollbars:** width `scrollbar-thin` / `scrollbar-none` / `scrollbar-auto`, colors `scrollbar-thumb-*` / `scrollbar-track-*`, and `scrollbar-gutter-stable` / `-both` / `-auto` to prevent layout shift.
 - **Logical properties:** block/inline-relative spacing, sizing, and insets — e.g. `mbs-*`/`mbe-*` (margin block start/end), `pbs-*`/`pbe-*`, `block-*`/`inline-*` (sizing), `inset-s-*`/`inset-e-*`.
 - **Zoom:** `zoom-75` `zoom-100` `zoom-125`, arbitrary (`zoom-[1.1]`) and variable (`zoom-(--preview-zoom)`).
 - **Tab size:** `tab-2` `tab-4` `tab-8`, arbitrary and variable.

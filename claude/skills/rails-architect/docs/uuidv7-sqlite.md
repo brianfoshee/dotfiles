@@ -2,8 +2,8 @@
 
 UUIDv7 embeds a millisecond timestamp in its first 48 bits, so ids stay globally
 unique without coordination while still sorting by creation time — avoiding the
-index fragmentation that makes UUIDv4 a poor primary key. Ruby 3.4 ships
-`SecureRandom.uuid_v7`. SQLite stores them as 36-character TEXT, and string
+index fragmentation that makes UUIDv4 a poor primary key. `SecureRandom.uuid_v7`
+ships with Ruby 3.3+. SQLite stores them as 36-character TEXT, and string
 comparison gives correct chronological ordering.
 
 The cost is ~30 bytes per row versus an integer, on both the table and every

@@ -171,8 +171,12 @@ litestream restore -o /rails/storage/production.sqlite3 \
 litestream restore -o /rails/storage/production.sqlite3 \
   -timestamp "2024-01-15T10:30:00Z" s3://myapp-backups/production.sqlite3
 
-litestream snapshots s3://myapp-backups/production.sqlite3
+litestream ltx s3://myapp-backups/production.sqlite3   # list available LTX files
+litestream info s3://myapp-backups/production.sqlite3
 ```
+
+The v0.3 `litestream snapshots` command no longer exists — the LTX rewrite
+replaced it.
 
 ```hcl
 resource "cloudflare_r2_bucket" "backups" {

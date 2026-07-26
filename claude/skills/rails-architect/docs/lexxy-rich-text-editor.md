@@ -54,15 +54,12 @@ version supports. `Lexxy.supports_editor_adapter?` is the switch — it returns
 true when `ActionText::Editor#editor_tag` accepts a block (rails/rails#56926).
 
 **Rails 8.2+ — adapter path.** Lexxy registers itself through the
-`ActionText::Editor` interface (0.9.5+), so `form.rich_textarea` emits
-`<lexxy-editor>` directly. There's no override flag; opt out by naming another
-registered adapter, per model or globally:
+`ActionText::Editor` interface (0.9.16+), so `form.rich_textarea` emits
+`<lexxy-editor>` directly. There's no override flag, and the editor is a single
+global — `has_rich_text` takes no `editor:` keyword, so there is no per-model
+opt-out. Name a different registered adapter instead:
 
 ```ruby
-class Article < ApplicationRecord
-  has_rich_text :content, editor: :trix
-end
-
 config.action_text.editor = :trix
 ```
 
@@ -83,7 +80,7 @@ Check the live state with `Rails.application.config.action_text.editor`.
 |---------------|------------------------------------------------|
 | `preset`      | Named configuration preset (default `"default"`) |
 | `placeholder` | Placeholder text                               |
-| `single-line` | Single-line mode, suppresses Enter             |
+| `single-line` | Single-line mode, suppresses Enter. Slated for deprecation in favor of `multi-line="false"` |
 | `autofocus`   | Focus on mount                                 |
 | `required`    | Native form validation                         |
 | `rows`        | Height in line-height units (default `8`)      |
@@ -162,6 +159,8 @@ any number of prompts can coexist in one editor.
 | `remote-filtering`           | Filter server-side on each keystroke         |
 | `insert-editable-text`       | Insert as editable text, not an attachment   |
 | `supports-space-in-searches` | Allow spaces in the query                    |
+| `only-at`                    | Regex for where the trigger may fire (default `^\|[ \n]`) |
+| `vertical-direction`         | `top` or `bottom` — where the menu opens     |
 
 `<lexxy-prompt-item>` takes `search` (text to match) and `sgid`. It holds two
 templates: `type="menu"` for the dropdown, `type="editor"` for what lands in the
@@ -302,8 +301,10 @@ Lexxy.configure({
   },
 
   default: {
-    toolbar: true, attachments: true, markdown: true,
+    toolbar: { upload: "both" },  // the shipped default — see below
+    attachments: true, markdown: true,
     multiLine: true, richText: true,
+    headings: ["h2", "h3", "h4"],
     highlight: {
       buttons: {
         color: [1,2,3,4,5,6,7,8,9].map(n => `var(--highlight-${n})`),
@@ -318,7 +319,14 @@ Lexxy.configure({
 })
 ```
 
-Select a preset per editor with `<lexxy-editor preset="simple">`.
+Select a preset per editor with `<lexxy-editor preset="simple">`. Any preset key
+is also settable as a dasherized element attribute.
+
+`toolbar` accepts a boolean, a config hash, or the id of an external
+`<lexxy-toolbar>`. Merging replaces a hash with a non-hash, so writing
+`toolbar: true` into the default preset silently discards the shipped
+`upload: "both"`. `permittedAttachmentTypes` is the other preset key worth
+knowing about.
 
 ## Custom upload handling
 
@@ -346,6 +354,7 @@ class ImagesController < ApplicationController
 
     render json: {
       attachable_sgid: image.attachable_sgid,  # the Image's SGID, not the blob's
+      signed_id: blob.signed_id,               # required — see below
       filename: blob.filename.to_s,
       content_type: blob.content_type,
       byte_size: blob.byte_size,
@@ -360,6 +369,10 @@ Lexxy only cares about that JSON shape — `attachable_sgid` decides what gets
 embedded, whether it points at a blob or your own record. The model needs
 `include ActionText::Attachable`, a `content_type`, and
 `previewable_attachable?` returning true for in-editor previews.
+
+`signed_id` is easy to miss: `url` is only used when `previewable` is true.
+Everything else builds its src by substituting `signed_id` into the
+`blob_url_template`, so omitting it renders a broken attachment.
 
 For validation before the upload starts, listen for `lexxy:file-accept` and call
 `preventDefault()` to reject the file entirely; let it through to fall back to
@@ -398,15 +411,17 @@ for reference:
 ```ruby
 Rails.application.config.to_prepare do
   ActionText::ContentHelper.allowed_tags += %w[video audio source embed table tbody tr th td]
-  ActionText::ContentHelper.allowed_attributes += %w[controls poster data-language style value]
+  ActionText::ContentHelper.allowed_attributes += %w[controls poster data-language style value start]
   Loofah::HTML5::SafeList::ALLOWED_CSS_FUNCTIONS << "var"
 end
 ```
 
 **Editor-side** is DOMPurify, run over every custom attachment's `innerHtml`
-before it's shown in the in-place preview. Its allowlist comes from each active
-extension's `allowedElements` plus a fixed set of global attributes (`class`,
-`contenteditable`, `href`, `src`, `style`, `title`).
+and over the editor's submitted value. Its allowlist is Lexical's registered
+importable tags plus each active extension's `allowedElements`, together with a
+fixed set of global attributes (`class`, `contenteditable`, `href`, `src`,
+`style`, `title`). `style` survives but is filtered down to `color` and
+`background-color`.
 
 So an attachment partial emitting `<iframe>` — Spotify, Apple Music, YouTube —
 renders correctly once saved but looks broken *while editing*, because only the
@@ -431,8 +446,9 @@ attributes apply on top, so `class`/`src`/`style` survive unlisted.
 ## Editor registry
 
 Rails 8.2 extracts `ActionText::Editor` as a base class, decoupling ActionText
-from Trix; `ActionText::TrixEditor` is the reference implementation. Lexxy
-registers itself on this path:
+from Trix; `ActionText::Editor::TrixEditor` is the reference implementation
+(the configurator resolves names via `Editor.const_get("#{name.camelize}Editor")`,
+so every editor class nests under `Editor`). Lexxy registers itself on this path:
 
 ```ruby
 # lib/lexxy/engine.rb, for reference
@@ -442,14 +458,24 @@ initializer "lexxy.action_text_editor", before: "action_text.editors" do |app|
 end
 ```
 
-A custom editor subclasses `ActionText::Editor` and implements the two
-transformations between editor HTML and stored canonical HTML. Lexxy's are
-identity functions because it already emits the canonical format:
+A custom editor subclasses `ActionText::Editor` and can override the two
+transformations between editor HTML and stored canonical HTML. `ActionText::Editor`
+implements both as identity, so Lexxy — which already emits the canonical
+format — overrides neither, and only customizes tag rendering:
 
 ```ruby
-class ActionText::Editor::LexxyEditor < ActionText::Editor
-  def as_canonical(editable_fragment) = editable_fragment
-  def as_editable(canonical_fragment) = canonical_fragment
+module ActionText
+  class Editor::LexxyEditor < Editor
+    def editor_tag(...) = Tag.new(editor_name, ...)
+  end
+
+  class Editor::LexxyEditor::Tag < Editor::Tag
+    def render_in(view_context, ...)
+      # Strip html_safe to preserve attribute escaping
+      options[:value] = options[:value].to_str if options[:value].respond_to?(:to_str)
+      super
+    end
+  end
 end
 ```
 
@@ -471,18 +497,23 @@ class MyExtension extends Extension {
 Lexxy.configure({ global: { extensions: [MyExtension] } })  // the class, not an instance
 ```
 
-Registered automatically from config: `AttachmentsExtension`,
+Registered automatically from config, among others: `AttachmentsExtension`,
 `HighlightExtension`, `TablesExtension`, `TrixContentExtension` (imports legacy
 Trix HTML), `ProvisionalParagraphExtension`.
 
 Lexxy also ships `ActionText::Attachables::RemoteVideo`, which resolves
-`<action-text-attachment>` nodes whose content type matches `/^video/` into
-YouTube/Vimeo embeds with no ActiveRecord model behind them. Define your own
-attachable model instead when you need metadata or access control.
+`<action-text-attachment>` nodes whose content type matches
+`/^video(\/.+|$)/` without an ActiveRecord model behind them. It renders a
+native HTML5 `<video controls>` with a `<source>` at the attachment URL — there
+is no oEmbed or iframe, so YouTube and Vimeo links need your own attachable
+model, as does anything wanting metadata or access control.
 
 ## Styling
 
-Everything is exposed as CSS custom properties on `:root`.
+Most theming is exposed as CSS custom properties on `:root`
+(`lexxy-variables.css`). The Editor row below is the exception — those four are
+scoped to `:where(lexxy-editor)` in `lexxy-editor.css` and must be overridden on
+the element, not the root.
 
 | Group        | Properties                                                        |
 |--------------|-------------------------------------------------------------------|
@@ -518,7 +549,9 @@ Which of them appear as toolbar buttons, and which survive a paste, is set
 separately in the JS preset. Structural hooks for your own CSS: `lexxy-editor`,
 `.lexxy-editor__content`, `.lexxy-editor--empty::before` (renders the
 `placeholder` attribute), `.lexxy-prompt-menu`, `.lexxy-prompt-menu__item`,
-`.lexxy-prompt-menu__item--selected`.
+`.lexxy-prompt-menu__item--empty`. The highlighted prompt entry is marked with
+`aria-selected`, so style `.lexxy-prompt-menu__item[aria-selected]` — there is
+no `--selected` modifier class.
 
 Wrap published content by overriding the ActionText content partial:
 
@@ -561,6 +594,6 @@ end
 
 ## References
 
-- [Lexxy](https://github.com/basecamp/lexxy) · [docs](https://basecamp.github.io/lexxy)
+- [Lexxy](https://github.com/basecamp/lexxy) · [docs](https://lexxy.dev/docs/)
 - [ActionText guide](https://guides.rubyonrails.org/action_text_overview.html) · [edge](https://edgeguides.rubyonrails.org/action_text_overview.html)
 - [Lexical](https://lexical.dev/)

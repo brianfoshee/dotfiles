@@ -54,17 +54,20 @@ R2 is S3-compatible, so Litestream uses the `s3` replica type:
 
 ```yaml
 # config/litestream.yml
+snapshot:
+  retention: 720h                # global since v0.5; per-replica retention is gone
+
 dbs:
   - path: /rails/storage/production.sqlite3
-    replicas:
-      - type: s3
-        bucket: myapp-backups
-        endpoint: https://<account-id>.r2.cloudflarestorage.com
-        region: auto
-        access-key-id: $LITESTREAM_ACCESS_KEY_ID
-        secret-access-key: $LITESTREAM_SECRET_ACCESS_KEY
-        path: production.sqlite3
-        sync-interval: 60s
+    replica:                     # singular map — v0.5 removed multi-replica support
+      type: s3
+      bucket: myapp-backups
+      endpoint: https://<account-id>.r2.cloudflarestorage.com
+      region: auto
+      access-key-id: $LITESTREAM_ACCESS_KEY_ID
+      secret-access-key: $LITESTREAM_SECRET_ACCESS_KEY
+      path: production.sqlite3
+      sync-interval: 1s
 ```
 
 ## ActiveStorage Service
