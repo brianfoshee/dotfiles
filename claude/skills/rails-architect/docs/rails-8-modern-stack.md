@@ -1,8 +1,7 @@
 # Rails 8.2 Modern Stack
 
 Zero-build, zero-Redis Rails: SQLite for everything, Puma plugins instead of
-Foreman, import maps instead of a bundler. Version labels name the release that
-introduced a feature, so you can tell what your app already has.
+Foreman, import maps instead of a bundler. Targets Rails edge/main.
 
 ## Contents
 
@@ -26,7 +25,7 @@ Puma plugins fold the CSS watcher and the job worker into the web process, so
 `bin/dev` is just `rails server` and there's no Procfile or Foreman:
 
 ```ruby
-# config/puma.rb — as generated on main (8.2)
+# config/puma.rb
 plugin :tmp_restart
 plugin :solid_queue if ![ "", "false", "0" ].include?(ENV["SOLID_QUEUE_IN_PUMA"].to_s.downcase)
 
@@ -40,18 +39,14 @@ plugin :tailwindcss if ENV.fetch("RAILS_ENV", "development") == "development"
 exec "./bin/rails", "server", *ARGV
 ```
 
-Mind the polarity, which flipped between releases. On 8.1 the generated line is
-`plugin :solid_queue if ENV["SOLID_QUEUE_IN_PUMA"]` — opt-in, so jobs run in the
-web process only when you ask. On 8.2 it is opt-*out*: unset loads the plugin.
-To run `bin/jobs` as its own process on 8.2, set `SOLID_QUEUE_IN_PUMA=false`
-explicitly, or you get a supervisor in both places.
+The job plugin is opt-*out*: leaving `SOLID_QUEUE_IN_PUMA` unset loads it. To
+run `bin/jobs` as its own process, set `SOLID_QUEUE_IN_PUMA=false` explicitly,
+or you get a supervisor in both places.
 
 ## Local CI runner
 
 `bin/ci` runs the CI pipeline locally from a Ruby config, so the same definition
-drives local runs and GitHub Actions. The runner and `step` are 8.1; the
-`group … parallel:` DSL below is 8.2 (#56774) and was not backported, so on 8.1
-write flat `step` calls instead:
+drives local runs and GitHub Actions:
 
 ```ruby
 # config/ci.rb
@@ -91,9 +86,9 @@ is visible. `analyze: :immediately` analyzes blobs before validation callbacks
 run, so `has_one_attached :avatar, content_type: "image/*"` validates on first
 save.
 
-### CSRF via Sec-Fetch-Site (8.2)
+### CSRF via Sec-Fetch-Site
 
-`:header_only` is the 8.2 default: forgery protection verifies the browser's
+`:header_only` is the default: forgery protection verifies the browser's
 `Sec-Fetch-Site` header and needs no `authenticity_token` form param. Migrating
 an existing app is where you'd override it, falling back to token verification:
 
@@ -102,17 +97,15 @@ config.action_controller.forgery_protection_verification_strategy = :header_or_l
 ```
 
 A companion `config.action_controller.forgery_protection_trusted_origins` takes
-an allowlist array. The same change deprecates `InvalidAuthenticityToken` in
-favor of `InvalidCrossOriginRequest`, so rescue clauses naming the old constant
-need updating. (#56350)
+an allowlist array. Rescue `InvalidCrossOriginRequest` rather than
+`InvalidAuthenticityToken`.
 
 ### SSL
 
-Since 8.1 (#56010), the generator *comments out* `config.assume_ssl` and
-`config.force_ssl` in `production.rb` when the app is generated with Kamal, so
-Kamal deploys work out of the box. They're still emitted, just inert — and with
-`--skip-kamal` they're generated active. Behind an SSL-terminating proxy,
-uncomment both:
+The generator emits `config.assume_ssl` and `config.force_ssl` in
+`production.rb` commented out when the app is generated with Kamal, so Kamal
+deploys work out of the box; `--skip-kamal` emits them active. Behind an
+SSL-terminating proxy, uncomment both:
 
 ```ruby
 # config/environments/production.rb
@@ -122,7 +115,7 @@ config.force_ssl = true
 
 ## Combined credentials
 
-`Rails.app.creds` (8.2) checks ENV first, then falls back to encrypted
+`Rails.app.creds` checks ENV first, then falls back to encrypted
 credentials — with a dotenv layer in between when running in development.
 `Rails.app.envs` reads the ENV layer alone.
 
@@ -214,7 +207,7 @@ PRAGMA cache_size = 2000;              -- 2000 *pages* (~8MB), not a byte count
 fair-retry handler via `busy_handler_timeout=`; with no `timeout:` there is no
 wait at all. Rails releases the GVL while it waits, so other threads keep
 running, and translates `SQLite3::BusyException` into
-`ActiveRecord::StatementTimeout`. Needs the `sqlite3` gem >= 2.0. (#51958)
+`ActiveRecord::StatementTimeout`. Needs the `sqlite3` gem >= 2.0.
 
 **IMMEDIATE transactions** are the root-cause fix for spurious `database is
 locked` errors. SQLite's native DEFERRED mode acquires the write lock at the
@@ -224,7 +217,7 @@ Rails app where nearly every `transaction do` block writes, that is where the
 lock errors come from. Rails sets `default_transaction_mode: :immediate`,
 acquiring the lock at `BEGIN` so contention happens before any work and the busy
 handler can queue and retry fairly. Fixtures and joinable transactions stay
-DEFERRED internally; there's no public flag to change the default. (#50371)
+DEFERRED internally; there's no public flag to change the default.
 
 WAL, the busy handler, and IMMEDIATE together are what eliminate the error
 storm: untuned SQLite errors on roughly half of responses at four concurrent
@@ -236,7 +229,7 @@ foreign-key sugar or its experimental reader/writer pool split.
 
 ## Customizing pragmas
 
-A `pragmas:` key (7.2) merges over the defaults; unknown pragmas warn. (#50460)
+A `pragmas:` key merges over the defaults; unknown pragmas warn.
 
 ```yaml
 production:
@@ -250,9 +243,9 @@ production:
 
 ## Loading SQLite extensions
 
-An `extensions:` array (8.1) loads sqlite-vec, sqlean, and friends. Each entry
-is a filesystem path, ERB returning a path, or a module responding to
-`.to_path`. Needs the `sqlite3` gem >= 2.4.0. (#53827)
+An `extensions:` array loads sqlite-vec, sqlean, and friends. Each entry is a
+filesystem path, ERB returning a path, or a module responding to `.to_path`.
+Needs the `sqlite3` gem >= 2.4.0.
 
 ```yaml
 production:
@@ -323,7 +316,7 @@ Cache is disk-backed, so it survives restarts and isn't bounded by memory.
 
 ## Gems and layout
 
-8.2 is unreleased, so there is no version to pin — track main directly:
+Track main:
 
 ```ruby
 gem "rails", github: "rails/rails", branch: "main"

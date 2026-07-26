@@ -47,30 +47,23 @@ import "lexxy"                 // bundlers: import "@37signals/lexxy"
 <%= stylesheet_link_tag "lexxy" %>
 ```
 
-### Two integration paths
+### ActionText integration
 
-Lexxy picks its ActionText integration at load time based on what the Rails
-version supports. `Lexxy.supports_editor_adapter?` is the switch — it returns
-true when `ActionText::Editor#editor_tag` accepts a block (rails/rails#56926).
-
-**Rails 8.2+ — adapter path.** Lexxy registers itself through the
-`ActionText::Editor` interface (0.9.16+), so `form.rich_textarea` emits
-`<lexxy-editor>` directly. There's no override flag, and the editor is a single
-global — `has_rich_text` takes no `editor:` keyword, so there is no per-model
-opt-out. Name a different registered adapter instead:
+Lexxy registers itself through the `ActionText::Editor` adapter interface, so
+`form.rich_textarea` emits `<lexxy-editor>` with no further configuration. The
+editor is a single global — `has_rich_text` takes no `editor:` keyword, so
+there is no per-model opt-out. Name a different registered adapter instead:
 
 ```ruby
 config.action_text.editor = :trix
 ```
 
-**Rails 8.0/8.1 — monkey-patch fallback.** Lexxy prepends modules onto the
-ActionText tag helpers. Opt out and call its helper explicitly instead:
-
-```ruby
-config.lexxy.override_action_text_defaults = false  # then form.lexxy_rich_text_area :content
-```
-
 Check the live state with `Rails.application.config.action_text.editor`.
+
+On Rails too old for the adapter interface, Lexxy falls back to prepending onto
+the ActionText tag helpers; `Lexxy.supports_editor_adapter?` reports which path
+is active, and `config.lexxy.override_action_text_defaults = false` opts out of
+the fallback in favor of calling `form.lexxy_rich_text_area` explicitly.
 
 ## Editor attributes
 
@@ -80,7 +73,7 @@ Check the live state with `Rails.application.config.action_text.editor`.
 |---------------|------------------------------------------------|
 | `preset`      | Named configuration preset (default `"default"`) |
 | `placeholder` | Placeholder text                               |
-| `single-line` | Single-line mode, suppresses Enter. Slated for deprecation in favor of `multi-line="false"` |
+| `single-line` | Single-line mode, suppresses Enter (also `multi-line="false"`) |
 | `autofocus`   | Focus on mount                                 |
 | `required`    | Native form validation                         |
 | `rows`        | Height in line-height units (default `8`)      |
@@ -445,8 +438,8 @@ attributes apply on top, so `class`/`src`/`style` survive unlisted.
 
 ## Editor registry
 
-Rails 8.2 extracts `ActionText::Editor` as a base class, decoupling ActionText
-from Trix; `ActionText::Editor::TrixEditor` is the reference implementation
+ActionText is decoupled from Trix behind an `ActionText::Editor` base class;
+`ActionText::Editor::TrixEditor` is the reference implementation
 (the configurator resolves names via `Editor.const_get("#{name.camelize}Editor")`,
 so every editor class nests under `Editor`). Lexxy registers itself on this path:
 
@@ -479,8 +472,7 @@ module ActionText
 end
 ```
 
-`to_trix_html` is deprecated in favor of `to_editor_html`, which delegates to the
-configured editor's `as_editable`.
+`to_editor_html` delegates to the configured editor's `as_editable`.
 
 ## Extensions
 

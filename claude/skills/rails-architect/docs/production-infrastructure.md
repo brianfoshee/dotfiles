@@ -112,14 +112,13 @@ TUNNEL_TOKEN=$TUNNEL_TOKEN
 ## Litestream
 
 Continuous replication of SQLite to object storage, with point-in-time restore
-and no application changes. Since v0.5 the primary can also stream to live
-read-only replicas — the capability that used to require LiteFS.
+and no application changes. The primary can also serve live read-only replicas,
+which pull pages from object storage on demand — a read-only VFS that requires
+CGO.
 
-**v0.5 broke the config format.** Each database now takes a single `replica:`
-map, not a `replicas:` list. Retention moved to a global `snapshot.retention`.
-`litestream wal` became `litestream ltx`, and v0.3 replicas are not
-restore-compatible with v0.5. Litestream is still pre-1.0, so the config is
-stable in practice but not SemVer-guaranteed.
+Each database takes a single `replica:` map, and retention is global under
+`snapshot.retention`. Litestream is pre-1.0, so treat the config as stable in
+practice but not SemVer-guaranteed.
 
 **What to replicate.** Always the primary. The queue database is a judgment
 call — it holds enqueued jobs that haven't run, so replicate it if losing
@@ -133,7 +132,7 @@ parses, so anchors and env vars compose:
 ```yaml
 # config/litestream.yml
 snapshot:
-  retention: 720h                # 30 days, global — per-replica retention is gone
+  retention: 720h                # 30 days, applies to every database below
 
 dbs:
   - path: /rails/storage/production.sqlite3
@@ -159,8 +158,8 @@ Azure is the same shape with `type: abs`, `bucket` as the container name,
 `endpoint: https://<account>.blob.core.windows.net`, and top-level
 `access-key-id` / `secret-access-key` set from the storage account name and key.
 
-Because retention is now global, differing windows per database means running
-separate Litestream configs and processes.
+Retention is global, so differing windows per database means running separate
+Litestream configs and processes.
 
 Restores take the replica URL, with the same env vars set:
 
@@ -174,9 +173,6 @@ litestream restore -o /rails/storage/production.sqlite3 \
 litestream ltx s3://myapp-backups/production.sqlite3   # list available LTX files
 litestream info s3://myapp-backups/production.sqlite3
 ```
-
-The v0.3 `litestream snapshots` command no longer exists — the LTX rewrite
-replaced it.
 
 ```hcl
 resource "cloudflare_r2_bucket" "backups" {

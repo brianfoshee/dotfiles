@@ -50,16 +50,15 @@ Authenticate via `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` env vars (R2 AP
 
 ## Litestream Backup Target
 
-R2 is S3-compatible, so Litestream uses the `s3` replica type:
+R2 is S3-compatible, so Litestream replicates to it with the `s3` type. The
+R2-specific parts are the endpoint, `region: auto`, and an API token scoped to
+the backup bucket:
 
 ```yaml
 # config/litestream.yml
-snapshot:
-  retention: 720h                # global since v0.5; per-replica retention is gone
-
 dbs:
   - path: /rails/storage/production.sqlite3
-    replica:                     # singular map — v0.5 removed multi-replica support
+    replica:
       type: s3
       bucket: myapp-backups
       endpoint: https://<account-id>.r2.cloudflarestorage.com
@@ -72,7 +71,8 @@ dbs:
 
 ## ActiveStorage Service
 
-R2 works with Rails ActiveStorage via the S3 adapter:
+R2 works with Rails ActiveStorage via the S3 adapter. `force_path_style` and
+`region: auto` are the R2-specific bits:
 
 ```yaml
 # config/storage.yml

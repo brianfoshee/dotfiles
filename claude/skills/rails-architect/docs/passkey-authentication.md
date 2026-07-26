@@ -452,10 +452,9 @@ def rate_limit(to:, within:, by: -> { request.remote_ip },
                store: cache_store, name: nil, scope: nil, **options)
 ```
 
-Exceeding the limit raises `ActionController::TooManyRequests` (Rails 8.1; on
-8.0 the default was `-> { head :too_many_requests }` and the class didn't
-exist). Rails' exception wrapper already maps it to a 429, so no `rescue_from`
-is needed for the status code alone. It's a bare exception class — there is no
+Exceeding the limit raises `ActionController::TooManyRequests`. Rails' exception
+wrapper already maps it to a 429, so no `rescue_from` is needed for the status
+code alone. It's a bare exception class — there is no
 `retry_after` on it and no message payload, so a custom response has to come
 from `with:` rather than from reading the exception:
 
