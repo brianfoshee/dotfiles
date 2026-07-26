@@ -54,35 +54,33 @@ Set via `cloudflare_zone_setting` resources, plus `cloudflare_zone_dnssec`:
 | `automatic_https_rewrites` | `off` | Let the app handle its own asset URLs |
 | `websockets` | `on` | For ActionCable and friends |
 
-`cloudflare_zone_setting`'s destroy is a no-op for every `setting_id` — it drops
-the resource from state without calling Cloudflare, so the setting stays on.
-Turn one off from the dashboard, or by setting its value explicitly rather than
-removing the resource.
-
 ### DNS
 
 Point an app subdomain at a tunnel with a proxied CNAME to
 `${tunnel.id}.cfargotunnel.com`.
 
-Every proxied hostname needs a DNS record, Workers included — a
-`cloudflare_workers_route` alone won't route traffic. What lets a
-Worker-only domain skip writing one is `cloudflare_workers_custom_domain`,
-which provisions the record itself.
+## Gotchas
 
-A `www` → naked redirect ruleset does need a proxied record for `www`, so
-Cloudflare has something to intercept. Point it at the RFC 5737 documentation IP;
-the traffic never reaches it:
-
-```hcl
-resource "cloudflare_dns_record" "www" {
-  zone_id = var.cloudflare_zone_id
-  name    = "www"
-  content = "192.0.2.1"
-  type    = "A"
-  proxied = true
-  ttl     = 1
-}
-```
+- `cloudflare_zone_setting`'s destroy is a no-op for every `setting_id` — it
+  drops the resource from state without calling Cloudflare, so the setting stays
+  on. Turn one off from the dashboard, or by setting its value explicitly rather
+  than removing the resource.
+- Every proxied hostname needs a DNS record, Workers included — a
+  `cloudflare_workers_route` alone won't route traffic. What lets a Worker-only
+  domain skip writing one is `cloudflare_workers_custom_domain`, which
+  provisions the record itself.
+- A `www` → naked redirect ruleset does need a proxied record for `www`, so
+  Cloudflare has something to intercept: a proxied A record pointing at the
+  RFC 5737 documentation IP `192.0.2.1`. The traffic never reaches it.
+- Disabling workers.dev differs by resource: `cloudflare_worker` takes
+  `subdomain.enabled` and `subdomain.previews_enabled` directly;
+  `cloudflare_workers_script` has no such attribute and needs a separate
+  `cloudflare_workers_script_subdomain` resource.
+- Combining strict SSL, a tunnel, and a Worker breaks ACME unless all three
+  passthrough layers are present together — tunnel ingress, SSL ruleset, and
+  Worker bypass route (`docs/tunnel-and-acme.md`).
+- cloudflared as a container accessory must run with `network: host` to reach
+  services on the origin's localhost.
 
 ## Reference docs
 
@@ -122,12 +120,32 @@ npx wrangler d1 execute EMAIL_DB_NAME --remote --file=./schema.sql
 For the tunnel model, `terraform apply` comes first, then install `cloudflared`
 on the origin with the tunnel token and verify connectivity and cert issuance.
 
+### Verify
+
+After `terraform apply`, prove the deploy rather than assuming it:
+
+```bash
+terraform plan                # a clean apply reports no changes
+curl -sI https://DOMAIN       # site worker responds 200
+curl -sI https://www.DOMAIN   # redirect ruleset responds 301 to the naked domain
+curl -sI https://app.DOMAIN   # tunnel model: app responds with a valid cert
+```
+
+For email, send a test message to a routed address, then confirm both stores and
+the auto-reply:
+
+```bash
+npx wrangler d1 execute EMAIL_DB_NAME --remote \
+  --command "SELECT sender, subject, r2_key FROM emails ORDER BY received_at DESC LIMIT 1"
+```
+
+The row's `r2_key` should exist in the bucket, and the sender should receive the
+auto-reply. ACME troubleshooting steps are in `docs/tunnel-and-acme.md`.
+
 ## Design decisions
 
 - **Terraform over Wrangler.** Wrangler runs D1 migrations only; all worker and infrastructure deployment is Terraform-managed for reproducibility.
 - **Separate workers per concern.** Site, email, and app proxy have different bindings and deploy independently.
 - **esbuild for the email worker only.** It's the one with a dependency (`mimetext`); the static workers have none.
 - **RFC 3834 auto-reply detection.** Check the `Auto-Submitted` header plus common anti-loop heuristics before replying.
-- **Workers.dev disabled.** Nothing should be reachable at a workers.dev URL. `cloudflare_worker` takes `subdomain.enabled` and `subdomain.previews_enabled` directly; `cloudflare_workers_script` has no such attribute and needs a separate `cloudflare_workers_script_subdomain` resource.
-- **Three-layer ACME passthrough.** Tunnel ingress, SSL ruleset, and Worker bypass are all required together when combining strict SSL, tunnels, and Workers.
-- **`network: host` for the tunnel accessory.** cloudflared must use host networking to reach services on localhost.
+- **Workers.dev disabled.** Nothing should be reachable at a workers.dev URL.

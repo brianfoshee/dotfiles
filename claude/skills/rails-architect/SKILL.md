@@ -90,6 +90,32 @@ effects checked.
 **Organization**: concerns in the right directories, methods ordered by
 invocation, guard clauses at the top.
 
+Review alone doesn't verify a design. Once it lands as code, run the test suite
+(`bin/ci`, or `bin/rails test` before 8.1) and judge from the output.
+
+## Gotchas
+
+Version boundaries that bite because this skill targets edge/main while apps
+usually run stable:
+
+- `bin/ci` and `step` are 8.1; the `group ... parallel:` DSL is 8.2-only and was
+  not backported.
+- Puma's `solid_queue` plugin flipped polarity: 8.1 loads it only when
+  `SOLID_QUEUE_IN_PUMA` is set, 8.2 loads it unless disabled.
+- IMMEDIATE transactions (`default_transaction_mode: :immediate`, 8.0) are the
+  root-cause fix for spurious `database is locked` — DEFERRED acquires the write
+  lock mid-transaction, where the busy handler can't retry.
+- database.yml: `pragmas:` needs 7.2+, `extensions:` needs 8.1+ and sqlite3 gem
+  2.4+. `strict: true` means strict *quoting*, not SQLite STRICT tables.
+- Rate limiting raises `ActionController::TooManyRequests` (8.1), a bare class
+  with no `retry_after`. The store comes from
+  `config.action_controller.cache_store` or per-call `store:`.
+- The ActionText editor is one global setting (`config.action_text.editor`);
+  `has_rich_text` takes no `editor:` kwarg.
+- `SecureRandom.uuid_v7` needs Ruby 3.3+.
+- Litestream v0.5 config takes a singular `replica:` map per database, not a
+  `replicas:` list; v0.3-format backups are not restore-compatible.
+
 ## Reference docs
 
 - **`docs/anti-patterns.md`** — service objects, fat controllers, god objects, custom actions, over-engineering, missing transactions, mocked tests
