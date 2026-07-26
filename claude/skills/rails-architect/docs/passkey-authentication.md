@@ -1,267 +1,35 @@
 # Passkey Authentication (WebAuthn) for Rails
 
-Production-ready passkey authentication implementation pattern based on real-world Rails 8.2 application.
+Passkey-only authentication with the `webauthn-ruby` gem: no passwords, magic
+links for provisioning, challenges in the session, Stimulus on the front end.
+Rails' built-in `bin/rails generate authentication` covers email/password only,
+so this is all hand-rolled.
+
+The shape: an admin emails a `signed_id` magic link, the user follows it and is
+logged in for long enough to register a passkey, and every login after that is
+WebAuthn. Email is only an attack surface during that first 30-minute window;
+after setup it plays no part in authentication.
 
 ## Contents
 
-- [Overview](#overview)
-- [Key Architectural Decisions](#key-architectural-decisions)
-- [Why This Pattern?](#why-this-pattern)
-- [Security Superiority: Magic Links + Passkeys vs Traditional Authentication](#security-superiority-magic-links--passkeys-vs-traditional-authentication)
-  - [The Security Hierarchy (Best to Worst)](#the-security-hierarchy-best-to-worst)
-  - [Why Magic Links + Passkeys Are Superior](#why-magic-links--passkeys-are-superior)
-  - [Security Comparison Table](#security-comparison-table)
-  - [Magic Link Security Context](#magic-link-security-context)
-- [Data Model](#data-model)
-  - [Database Schema](#database-schema)
-  - [Models](#models)
-- [Authentication Flow](#authentication-flow)
-  - [Initial Setup (Admin-Controlled)](#initial-setup-admin-controlled)
-  - [Subsequent Logins](#subsequent-logins)
-- [Session-Based Challenge Storage](#session-based-challenge-storage)
-- [Magic Links for Passkey Setup](#magic-links-for-passkey-setup)
-  - [How Magic Links Work](#how-magic-links-work)
-  - [User Model](#user-model)
-  - [SessionsController](#sessionscontroller)
-  - [UsersController (Admin Actions)](#userscontroller-admin-actions)
-  - [PasskeyMailer](#passkeymailer)
-  - [Email Template](#email-template)
-  - [Routes](#routes)
-  - [Testing Magic Links](#testing-magic-links)
-  - [Security Considerations](#security-considerations)
-- [Controller Implementation](#controller-implementation)
-  - [WebAuthn Registration](#webauthn-registration)
-  - [WebAuthn Authentication](#webauthn-authentication)
-- [Stimulus JavaScript Controller](#stimulus-javascript-controller)
+- [Data model](#data-model)
+- [Registration must bind to current_user](#registration-must-bind-to-current_user)
+- [Session-based challenges](#session-based-challenges)
+- [Magic links](#magic-links)
+- [Registration controller](#registration-controller)
+- [Authentication controller](#authentication-controller)
+- [Stimulus controller](#stimulus-controller)
 - [Configuration](#configuration)
-  - [WebAuthn Configuration](#webauthn-configuration)
-  - [Session Store Configuration](#session-store-configuration)
-  - [FIDO Metadata Configuration (Optional)](#fido-metadata-configuration-optional)
-- [Rate Limiting](#rate-limiting)
-- [Testing with Virtual Authenticator](#testing-with-virtual-authenticator)
-- [Security Considerations](#security-considerations-1)
-  - [Never trust a user id from params or session during registration](#never-trust-a-user-id-from-params-or-session-during-registration)
-  - [Signature Counter Validation](#signature-counter-validation)
-  - [Origin Validation](#origin-validation)
-  - [FIDO Metadata](#fido-metadata)
-- [Required Gems](#required-gems)
-- [Routes](#routes-1)
-- [Testing with Virtual Authenticator (Comprehensive Guide)](#testing-with-virtual-authenticator-comprehensive-guide)
-  - [Why Virtual Authenticator](#why-virtual-authenticator)
-  - [Prerequisites](#prerequisites)
-  - [Critical Configuration for WebAuthn Tests](#critical-configuration-for-webauthn-tests)
-  - [Test Helper Methods](#test-helper-methods)
-  - [VirtualAuthenticatorOptions Reference](#virtualauthenticatoroptions-reference)
-  - [Test Patterns](#test-patterns)
-  - [Critical Implementation Details](#critical-implementation-details)
-  - [Testing Best Practices](#testing-best-practices)
-  - [Troubleshooting WebAuthn Tests](#troubleshooting-webauthn-tests)
-  - [Complete Test Example](#complete-test-example)
-- [Modern 2025 WebAuthn Patterns](#modern-2025-webauthn-patterns)
-  - [Native JSON Serialization APIs](#native-json-serialization-apis)
-  - [PublicKeyCredentialHints (Chrome 129+)](#publickeycredentialhints-chrome-129)
-  - [Conditional UI (Autofill)](#conditional-ui-autofill)
-  - [Signal API (Credential Lifecycle Management)](#signal-api-credential-lifecycle-management)
-  - [Related Origin Requests](#related-origin-requests)
+- [Rate limiting](#rate-limiting)
+- [Testing with a virtual authenticator](#testing-with-a-virtual-authenticator)
+- [Troubleshooting](#troubleshooting)
+- [Browser capabilities worth adopting](#browser-capabilities-worth-adopting)
+- [Gems and routes](#gems-and-routes)
 - [References](#references)
 
-## Overview
-
-This guide shows how to implement passkey-only authentication in Rails applications using WebAuthn, without passwords or traditional authentication systems.
-
-**Rails 8 context:**
-- Rails 8 ships with `bin/rails generate authentication` which provides email/password auth only (no WebAuthn)
-- This doc covers implementing passkey auth manually with the `webauthn-ruby` gem
-
-## Key Architectural Decisions
-
-1. **Admin-Controlled Provisioning** - Users receive passkey setup links from admins (no self-service registration)
-2. **Passkey-Only** - No passwords, pure WebAuthn authentication
-3. **Session-Based Challenges** - Store WebAuthn challenges in Rails session (not database)
-4. **Rails Built-in Rate Limiting** - Use `ActionController::RateLimiting` (not rack-attack)
-5. **Native JSON APIs** - Use browser's `toJSON()`/`parseJSON()` methods
-6. **Stimulus Controllers** - JavaScript organized via Hotwire Stimulus
-7. **Virtual Authenticator Testing** - Selenium's WebAuthn virtual authenticator for system tests
-
-## Why This Pattern?
-
-**Benefits:**
-- ✅ No password storage or management
-- ✅ Phishing-resistant authentication
-- ✅ Better UX (fingerprint/face authentication)
-- ✅ Simpler implementation (session-based challenges)
-- ✅ No additional database tables for challenges
-
-**Trade-offs:**
-- ⚠️ Requires JavaScript (progressive enhancement not possible)
-- ⚠️ Requires HTTPS in production
-- ⚠️ Browser support required (all modern browsers support WebAuthn)
-
-## Security Superiority: Magic Links + Passkeys vs Traditional Authentication
-
-### The Security Hierarchy (Best to Worst)
-
-```
-1. 🥇 Magic Links + Passkeys (This Pattern)
-   └─ NIST AAL2/AAL3 compliant, phishing-resistant by design
-
-2. 🥈 Passwords + Hardware 2FA (YubiKey)
-   └─ Phishing-resistant if hardware-based, but passwords still vulnerable
-
-3. 🥉 Passwords + Authenticator App (TOTP)
-   └─ Vulnerable to phishing, credential theft, password weaknesses
-
-4. ⚠️  Passwords + Email Codes
-   └─ Email interception, password weaknesses, account takeover
-
-5. 🚫 Passwords + SMS 2FA
-   └─ SIM swapping, SMS interception, outdated (2025 standards)
-
-6. 🚫 Passwords Only
-   └─ Vulnerable to all password attacks (phishing, reuse, breaches)
-```
-
-### Why Magic Links + Passkeys Are Superior
-
-#### 1. Phishing-Resistant by Design (FIDO2/WebAuthn)
-
-**Passkeys:**
-- ✅ **Cryptographically bound to domain** - A passkey for `example.com` cannot be used on `evil-example.com`
-- ✅ **No transmittable secrets** - Only cryptographic proof is exchanged, immune to replay attacks
-- ✅ **Origin validation** - Browser enforces that authentication only works on legitimate domain
-- ✅ **NIST SP 800-63-4 compliant** - Synced passkeys are AAL2, device-bound are AAL3
-
-**Traditional passwords/2FA:**
-- ❌ **Phishable** - Users can be tricked into entering credentials on fake sites
-- ❌ **Replayable** - Stolen credentials work on any site
-- ❌ **Social engineering vulnerable** - Attackers can convince users to share OTP codes
-
-**Real-world impact:**
-- 87% of hacking-related breaches are caused by weak or stolen passwords
-- 967% rise in credential phishing since 2022
-- Password breaches expose credentials that work across multiple sites
-
-#### 2. Magic Links Eliminate Password Vulnerabilities
-
-**Magic links remove:**
-- ✅ **Brute-force attacks** - No password to guess
-- ✅ **Dictionary attacks** - No password to crack
-- ✅ **Password reuse** - Each link is unique and temporary
-- ✅ **Weak passwords** - No user-chosen passwords
-- ✅ **Credential stuffing** - No credentials to stuff
-- ✅ **Password database breaches** - No passwords stored
-
-**Compared to passwords:**
-- ❌ Passwords are reused across sites (81% of breaches involve weak/stolen passwords)
-- ❌ Passwords can be guessed, cracked, or stolen
-- ❌ Password databases are prime targets for attackers
-- ❌ Users choose weak passwords despite policies
-
-#### 3. Superior to SMS 2FA (Deprecated in 2025)
-
-**Why SMS 2FA is insecure:**
-- 🚫 **SIM swapping** - Attacker convinces carrier to transfer number to their SIM
-- 🚫 **SMS interception** - Unencrypted SMS can be intercepted
-- 🚫 **SS7 vulnerabilities** - Telecom protocol allows message interception
-- 🚫 **Phishable** - Users can be tricked into sharing codes
-- 🚫 **Man-in-the-middle** - Real-time phishing can intercept and use codes
-
-**NIST 2025 guidance:**
-> SMS is no longer recommended for authentication. Organizations must adopt phishing-resistant methods like FIDO2 and passkeys.
-
-**Passkeys instead:**
-- ✅ Not interceptable or transferable
-- ✅ No phone number dependency
-- ✅ Works offline (device-based verification)
-- ✅ Phishing-resistant by cryptographic design
-
-#### 4. Superior to Email OTP Codes
-
-**Why email codes are insecure:**
-- ❌ **Email account takeover** - If email is compromised, all accounts are compromised
-- ❌ **Email interception** - Unencrypted email can be intercepted
-- ❌ **Phishable** - Users can be tricked into sharing codes
-- ❌ **Corporate scanning** - Email scanners may pre-click/consume codes
-- ❌ **Forwarding rules** - Attackers can set up forwarding rules
-- ❌ **Persistent access** - Codes remain in inbox, extending attack window
-
-**Magic links improve on email codes:**
-- ✅ **Time-limited** - Expire after 30 minutes (vs codes that may not expire)
-- ✅ **Purpose-scoped** - Can only be used for passkey setup (vs generic OTP)
-- ✅ **Cryptographically signed** - Tamper-proof (vs plain text codes)
-- ✅ **One-way transition** - Used to establish passkeys, not ongoing authentication
-
-**Critical difference:**
-- Magic links are a **setup mechanism** for passkeys, not the primary authentication
-- Once passkey is set up, user never relies on email again for authentication
-- Traditional email OTP is used for **every login**, creating ongoing vulnerability
-
-#### 5. Built-in Multi-Factor Authentication
-
-**Passkeys are 2FA by default:**
-- ✅ **Something you have** - The device with the private key
-- ✅ **Something you are** - Biometric verification (Touch ID/Face ID)
-- ✅ **Bound to device** - Cannot be copied or transmitted
-
-**Traditional passwords:**
-- ❌ Only 1FA (something you know)
-- ❌ Requires additional 2FA setup
-- ❌ 2FA can be bypassed, disabled, or social engineered
-
-#### 6. Cannot Be Stolen, Guessed, or Sold
-
-**Passkeys:**
-- ✅ **Private key never leaves device** - Impossible to steal remotely
-- ✅ **No dark web marketplace** - Nothing to sell or buy
-- ✅ **No database to breach** - Public keys are useless without private key
-- ✅ **Biometric-protected** - Requires physical device access + biometric
-
-**Passwords:**
-- ❌ Stolen in breaches and sold on dark web
-- ❌ Reused passwords work across sites
-- ❌ Can be guessed or cracked offline
-- ❌ No physical device required
-
-### Security Comparison Table
-
-| Attack Vector | Passwords + SMS | Passwords + Email OTP | Passwords + TOTP App | Magic Links + Passkeys |
-|---------------|:---------------:|:---------------------:|:--------------------:|:---------------------:|
-| **Phishing** | ❌ Vulnerable | ❌ Vulnerable | ❌ Vulnerable | ✅ **Immune** |
-| **Credential Stuffing** | ❌ Vulnerable | ❌ Vulnerable | ❌ Vulnerable | ✅ **Immune** |
-| **Password Breaches** | ❌ Vulnerable | ❌ Vulnerable | ❌ Vulnerable | ✅ **Immune** |
-| **SIM Swapping** | ❌ Vulnerable | N/A | N/A | ✅ **Immune** |
-| **Email Compromise** | N/A | ❌ Critical | N/A | ⚠️ Setup only |
-| **Man-in-the-Middle** | ❌ Vulnerable | ❌ Vulnerable | ⚠️ Partial | ✅ **Immune** |
-| **Social Engineering** | ❌ Vulnerable | ❌ Vulnerable | ❌ Vulnerable | ✅ **Resistant** |
-| **Brute Force** | ❌ Vulnerable | ❌ Vulnerable | ❌ Vulnerable | ✅ **Immune** |
-| **Replay Attacks** | ❌ Vulnerable | ⚠️ Partial | ⚠️ Partial | ✅ **Immune** |
-| **Account Takeover** | ❌ High Risk | ❌ High Risk | ⚠️ Medium Risk | ✅ **Low Risk** |
-
-### Magic Link Security Context
-
-**Important distinction:**
-- Magic links are used **once** to establish passkey (setup phase)
-- After setup, user authenticates with **passkey only** (no email dependency)
-- This is fundamentally different from email OTP, which relies on email for every login
-
-**Magic link vulnerabilities mitigated:**
-- ⚠️ **Email compromise** - Only affects initial setup, not ongoing authentication
-- ⚠️ **Link interception** - Time-limited (30 min), purpose-scoped, one-time use
-- ⚠️ **Phishing** - Can be mitigated with sender verification, HTTPS enforcement
-- ⚠️ **Auto-click scanners** - Use single-use token tracking if needed
-
-**Why this pattern works:**
-1. Magic link provides **convenient, secure onboarding** (no shared secrets)
-2. Passkey provides **ongoing phishing-resistant authentication** (FIDO2)
-3. Email is only attack surface during **initial 30-minute setup window**
-4. After setup, email compromise doesn't affect account security
-
-## Data Model
-
-### Database Schema
+## Data model
 
 ```ruby
-# db/migrate/YYYYMMDDHHMMSS_create_credentials.rb
 create_table :credentials, id: :string do |t|
   t.string :user_id, null: false, index: true
   t.binary :credential_id, null: false, index: { unique: true }
@@ -280,29 +48,22 @@ create_table :credentials, id: :string do |t|
 end
 ```
 
-**Why binary for credential_id and public_key:**
-- WebAuthn credentials are binary data, not strings
-- Efficient storage and comparison
-- Direct compatibility with webauthn-ruby gem
-
-**Why JSON for transports and metadata:**
-- Flexible storage for authenticator capabilities
-- FIDO metadata includes complex nested structures
-- Easy to query and display in UI
-
-### Models
+Both `credential_id` and `public_key` arrive from the gem as base64url
+*strings*, not bytes. `credential_id` gets decoded on write so lookups match
+(see [Troubleshooting](#troubleshooting)); `public_key` is stored as handed
+over and round-trips fine, since `verify` decodes it again. `raw_public_key` is
+the accessor that returns actual bytes if you'd rather keep the column
+genuinely binary.
 
 ```ruby
 class User < ApplicationRecord
   has_many :credentials, dependent: :destroy
 
-  def passkey_registered?
-    credentials.exists?
-  end
+  # Opaque handle sent to the authenticator — never the primary key.
+  # add_column :users, :webauthn_id, :string, null: false
+  before_create { self.webauthn_id ||= WebAuthn.generate_user_id }
 
-  def primary_credential
-    credentials.order(last_used_at: :desc).first
-  end
+  def passkey_registered? = credentials.exists?
 
   def generate_magic_link_token
     signed_id(expires_in: 30.minutes, purpose: :passkey_setup)
@@ -317,7 +78,6 @@ class Credential < ApplicationRecord
   validates :sign_count, numericality: { greater_than_or_equal_to: 0 }
 
   scope :active, -> { where(compromised: false) }
-  scope :backed_up, -> { where(backed_up: true) }
   scope :by_last_used, -> { order(last_used_at: :desc) }
 
   def flag_as_compromised!
@@ -326,640 +86,62 @@ class Credential < ApplicationRecord
     PasskeyMailer.credential_compromised(self).deliver_later
   end
 
-  def last_credential?
-    user.credentials.count == 1
-  end
+  def last_credential? = user.credentials.count == 1
 end
 ```
 
-## Authentication Flow
+## Registration must bind to current_user
 
-### Initial Setup (Admin-Controlled)
+The single most important rule in this document. Both `begin` and `complete`
+derive the user from `current_user` and nothing else:
 
-1. Admin clicks "Send Passkey Link" for user
-2. Email sent with magic link containing signed_id token
-3. User clicks link → auto-login via token verification
-4. User clicks "Create Passkey" → WebAuthn registration ceremony
-5. User redirected to dashboard
+- `begin` must not do `User.find(params[:user_id] || current_user.id)`.
+- `begin` must not stash `session[:webauthn_user_id]`.
+- `complete` must not read a user id from params or the session.
+- `complete` must not call `login(user)` — the magic link already logged them in.
 
-### Subsequent Logins
+Get any of these wrong and an authenticated attacker passes a victim's id to
+`begin`, completes the ceremony with their own authenticator, and ends up logged
+in as the victim with a persistent passkey on their own device. Without RBAC
+that's full account takeover from any login. A completed ceremony proves only
+that the attacker holds *some* authenticator; it says nothing about which
+account the credential belongs to. That binding comes from the server-side
+session or it doesn't exist.
 
-1. User visits /login
-2. Clicks "Sign in with passkey"
-3. Browser shows WebAuthn modal
-4. User authenticates (Touch ID/Face ID/security key)
-5. User logged in
-
-## Session-Based Challenge Storage
-
-**Why session instead of database:**
-- ✅ Simpler implementation (no table, no cleanup job)
-- ✅ Automatic expiration when session expires
-- ✅ Session-scoped security (challenge tied to specific browser)
-- ✅ Single-use enforcement via `session.delete()`
-- ✅ Encrypted by default (Rails session encryption)
-
-**Challenge lifecycle:**
 ```ruby
-# 1. Generate and store in session
+test "begin ignores user_id param targeting another user" do
+  login_as(@user)
+  post webauthn_registration_begin_path, params: { user_id: @other_user.id }
+  assert_response :success
+
+  json = JSON.parse(response.body)
+  assert_equal @user.email, json["user"]["name"]
+  refute_equal @other_user.id, session[:webauthn_user_id]
+end
+```
+
+## Session-based challenges
+
+Challenges live in the session rather than a table: no cleanup job, expiry comes
+free, the challenge is bound to one browser, and `session.delete` enforces
+single use. Rails encrypts session data already.
+
+```ruby
+# Store
 session[:webauthn_challenge] = options.challenge
 session[:webauthn_challenge_created_at] = Time.current
 
-# 2. Retrieve and validate (single-use)
+# Retrieve — single use
 challenge = session.delete(:webauthn_challenge)
 created_at = session.delete(:webauthn_challenge_created_at)
 
-# 3. Validate expiration (10 minutes)
 if Time.current - created_at > 10.minutes
-  return render json: { error: 'Challenge expired' }, status: :unprocessable_entity
+  return render json: { error: "Challenge expired" }, status: :unprocessable_entity
 end
 ```
 
-> **Do not** stash a `:webauthn_user_id` in the session for *registration*. Both
-> `begin` and `complete` should derive the user from `current_user` and never
-> from a params- or session-supplied id. See the security note in the
-> Registration controller section below for the account-takeover that pattern
-> enables.
-
-## Magic Links for Passkey Setup
-
-Magic links enable secure, time-limited access for users to set up their passkeys without passwords. This pattern uses Rails' built-in `signed_id` feature.
-
-### How Magic Links Work
-
-1. Admin generates a cryptographically signed token containing the user's ID
-2. Token is sent via email with expiration time
-3. User clicks link, Rails verifies signature and finds user
-4. User is auto-logged in temporarily
-5. User redirected to passkey setup page
-
-### User Model
-
-```ruby
-class User < ApplicationRecord
-  # Generate time-limited token for passkey setup
-  def generate_magic_link_token
-    signed_id(expires_in: 30.minutes, purpose: :passkey_setup)
-  end
-end
-```
-
-**Why `signed_id`?**
-- Built into Rails (no additional gems)
-- Cryptographically signed (tamper-proof)
-- Time-limited expiration
-- Purpose-scoped (can't be reused for other features)
-- Works with any ID type (including UUIDs)
-
-### SessionsController
-
-```ruby
-class SessionsController < ApplicationController
-  skip_before_action :require_authentication, only: [:new, :magic_link]
-
-  def new
-    # Login page with passkey button
-  end
-
-  def magic_link
-    # Verify signed_id token
-    user = User.find_signed!(
-      params[:token],
-      purpose: :passkey_setup
-    )
-
-    # Auto-login user
-    login(user)
-
-    # Redirect to passkey setup page
-    redirect_to new_credential_path, notice: "Welcome! Let's set up your passkey."
-
-  rescue ActiveSupport::MessageVerifier::InvalidSignature
-    redirect_to login_path, alert: "Invalid or expired setup link. Please contact an administrator."
-  end
-
-  def destroy
-    logout
-    redirect_to login_path, notice: "Logged out successfully"
-  end
-end
-```
-
-**Security features:**
-- `find_signed!` raises exception on invalid/expired tokens
-- Purpose validation prevents token reuse
-- Automatic expiration after 30 minutes
-- Signature prevents tampering
-
-### UsersController (Admin Actions)
-
-```ruby
-class UsersController < ApplicationController
-  before_action :require_admin, only: [:send_passkey_setup_link]
-
-  rate_limit to: 3, within: 1.hour,
-             by: -> { [current_user.id, params[:id]] },
-             only: :send_passkey_setup_link
-
-  def send_passkey_setup_link
-    user = User.find(params[:id])
-    token = user.generate_magic_link_token
-
-    # Send email with magic link
-    PasskeyMailer.setup_passkey(user, token).deliver_later
-
-    # Log admin action
-    Rails.logger.info "Admin #{current_user.email} sent passkey setup link to #{user.email}"
-
-    respond_to do |format|
-      format.turbo_stream do
-        render turbo_stream: turbo_stream.replace(
-          "user_#{user.id}_actions",
-          partial: "users/actions",
-          locals: { user: user, link_sent: true }
-        )
-      end
-    end
-  end
-end
-```
-
-**Rate limiting protects against:**
-- Admin accidentally spamming users
-- Malicious admin abuse
-- Email quota exhaustion
-
-### PasskeyMailer
-
-```ruby
-class PasskeyMailer < ApplicationMailer
-  def setup_passkey(user, token)
-    @user = user
-    @magic_link = magic_link_url(token)
-    @expires_at = 30.minutes.from_now
-
-    mail(
-      to: user.email,
-      subject: "Set up your passkey for #{ENV.fetch('APP_NAME', 'Your App')}"
-    )
-  end
-end
-```
-
-### Email Template
-
-```erb
-<!-- app/views/passkey_mailer/setup_passkey.html.erb -->
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-</head>
-<body style="font-family: sans-serif; line-height: 1.6; color: #333;">
-  <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
-    <h1 style="color: #1a1a1a;">Set up your passkey</h1>
-
-    <p>Hello <%= @user.name %>,</p>
-
-    <p>
-      An administrator has invited you to set up a passkey for your account.
-      Passkeys are a secure and convenient way to sign in using your fingerprint,
-      face, or device screen lock.
-    </p>
-
-    <div style="margin: 30px 0;">
-      <a href="<%= @magic_link %>"
-         style="display: inline-block; padding: 12px 24px; background-color: #3b82f6; color: white; text-decoration: none; border-radius: 6px; font-weight: bold;">
-        Set up passkey
-      </a>
-    </div>
-
-    <p style="color: #666; font-size: 14px;">
-      This link will expire at <%= @expires_at.strftime('%I:%M %p %Z on %B %d, %Y') %>
-      (30 minutes from now).
-    </p>
-
-    <hr style="margin: 30px 0; border: none; border-top: 1px solid #e5e5e5;">
-
-    <h2 style="font-size: 18px;">What are passkeys?</h2>
-    <ul>
-      <li>More secure than passwords (can't be phished or stolen)</li>
-      <li>Faster sign-in (just use your fingerprint or face)</li>
-      <li>Work across your devices (iPhone, MacBook, etc.)</li>
-      <li>No passwords to remember</li>
-    </ul>
-
-    <p style="color: #666; font-size: 12px; margin-top: 30px;">
-      If you didn't request this, please contact your administrator.
-    </p>
-  </div>
-</body>
-</html>
-```
-
-### Routes
-
-```ruby
-# config/routes.rb
-Rails.application.routes.draw do
-  # Magic link authentication
-  get '/login/:token', to: 'sessions#magic_link', as: :magic_link
-
-  # Admin can send setup links
-  resources :users do
-    member do
-      post :send_passkey_setup_link
-    end
-  end
-end
-```
-
-### Testing Magic Links
-
-```ruby
-# test/system/passkey_authentication_test.rb
-test "user registers first passkey via magic link" do
-  # Generate magic link token
-  token = @user.generate_magic_link_token
-
-  # Visit magic link
-  visit magic_link_path(token)
-
-  # Should be auto-logged in and redirected to setup page
-  assert_current_path new_credential_path
-  assert_text "Set up your passkey"
-
-  # Click create passkey button
-  click_button "Create passkey"
-
-  # Virtual authenticator handles WebAuthn ceremony
-  assert_current_path jobs_path, wait: 5
-
-  # Verify credential was created
-  @user.reload
-  assert @user.passkey_registered?
-end
-
-test "expired magic link is rejected" do
-  # Travel forward 31 minutes
-  travel 31.minutes do
-    token = @user.generate_magic_link_token
-  end
-
-  visit magic_link_path(token)
-
-  assert_current_path login_path
-  assert_text "Invalid or expired setup link"
-end
-
-test "admin can send passkey setup link" do
-  login_as(@admin)
-  visit users_path
-
-  within "#user_#{@user.id}" do
-    click_button "Send Setup Link"
-  end
-
-  # Verify email was sent
-  assert_emails 1
-  email = ActionMailer::Base.deliveries.last
-  assert_equal [@user.email], email.to
-  assert_match "Set up your passkey", email.subject
-  assert_match magic_link_url(@user.generate_magic_link_token), email.body.to_s
-end
-```
-
-### Security Considerations
-
-**Token Security:**
-- Cryptographically signed (uses Rails secret_key_base)
-- Time-limited (30 minutes)
-- Purpose-scoped (can't be used for other features)
-- Single-use is optional (consider adding used_at timestamp if needed)
-
-**Email Security:**
-- Use HTTPS for magic link URLs
-- Short expiration time reduces window of attack
-- Log all magic link sends for audit trail
-- Rate limit magic link sends to prevent abuse
-
-**Alternative: Single-Use Tokens**
-
-For higher security, track used tokens:
-
-```ruby
-class User < ApplicationRecord
-  def generate_magic_link_token
-    # Store used_at timestamp to make single-use
-    update_column(:magic_link_used_at, nil)
-    signed_id(expires_in: 30.minutes, purpose: :passkey_setup)
-  end
-
-  def verify_magic_link!
-    raise "Magic link already used" if magic_link_used_at && magic_link_used_at > 30.minutes.ago
-    update_column(:magic_link_used_at, Time.current)
-  end
-end
-
-# In SessionsController
-def magic_link
-  user = User.find_signed!(params[:token], purpose: :passkey_setup)
-  user.verify_magic_link!  # Raises if already used
-  login(user)
-  redirect_to new_credential_path
-end
-```
-
-## Controller Implementation
-
-### WebAuthn Registration
-
-> ⚠️ **Security: never accept `user_id` from params or session for registration.**
-> The user must be derived from `current_user` only. Earlier versions of this
-> guide showed a `User.find(params[:user_id] || current_user.id)` pattern and
-> stashed `session[:webauthn_user_id]`, then called `login(user)` after
-> creating the credential. That pattern is an account-takeover vulnerability:
-> any authenticated user could pass another user's id to `begin`, complete the
-> ceremony with their own authenticator, and end up logged in as the target
-> with a persistent passkey on their device. Bind everything to `current_user`,
-> drop the post-registration `login()` call (the user is already logged in via
-> the magic link), and use `current_user.id` for rate limiting.
-
-```ruby
-class Webauthn::RegistrationController < ApplicationController
-  # NOTE: no skip_before_action :require_authentication — registration is
-  # only reachable after the user has logged in via magic link.
-  rate_limit to: 5, within: 15.minutes,
-             by: -> { current_user&.id }
-
-  def begin
-    user = current_user
-
-    options = WebAuthn::Credential.options_for_create(
-      user: {
-        id: user.id,
-        name: user.email,
-        display_name: user.name
-      },
-      exclude: user.credentials.pluck(:credential_id).map { |id|
-        Base64.urlsafe_encode64(id, padding: false)
-      },
-      authenticator_selection: {
-        resident_key: 'preferred',
-        user_verification: 'preferred'
-      }
-    )
-
-    # Store challenge in session (single-use). DO NOT stash user_id here —
-    # complete() must read the user from current_user, not from the session.
-    session[:webauthn_challenge] = options.challenge
-    session[:webauthn_challenge_created_at] = Time.current
-
-    render json: options
-  end
-
-  def complete
-    # Retrieve challenge from session (single-use)
-    challenge = session.delete(:webauthn_challenge)
-    created_at = session.delete(:webauthn_challenge_created_at)
-
-    # Validate presence and expiration
-    unless challenge && created_at
-      return render json: { error: 'No active registration challenge' },
-                    status: :unprocessable_entity
-    end
-
-    if Time.current - created_at > 10.minutes
-      return render json: { error: 'Challenge expired' },
-                    status: :unprocessable_entity
-    end
-
-    # Always bind to current_user. Trusting any session- or param-supplied
-    # user id here would let an authenticated attacker register a passkey
-    # under another user's account.
-    user = current_user
-    webauthn_credential = WebAuthn::Credential.from_create(params[:credential])
-
-    begin
-      webauthn_credential.verify(challenge)
-
-      credential = user.credentials.create!(
-        credential_id: Base64.urlsafe_decode64(webauthn_credential.id),
-        public_key: webauthn_credential.public_key,
-        sign_count: webauthn_credential.sign_count,
-        aaguid: webauthn_credential.response.aaguid,
-        transports: webauthn_credential.response.transports || []
-      )
-
-      # No login(user) here — the user is already authenticated. Re-logging
-      # them in based on a session-stored id is the takeover vector.
-      render json: { success: true, redirect_url: jobs_path }
-
-    rescue WebAuthn::Error => e
-      render json: { error: e.message }, status: :unprocessable_entity
-    end
-  end
-end
-```
-
-### WebAuthn Authentication
-
-```ruby
-class Webauthn::AuthenticationController < ApplicationController
-  skip_before_action :require_authentication
-
-  rate_limit to: 10, within: 15.minutes, by: -> { request.remote_ip }
-
-  def begin
-    options = WebAuthn::Credential.options_for_get(
-      user_verification: 'preferred'
-    )
-
-    session[:webauthn_challenge] = options.challenge
-    session[:webauthn_challenge_created_at] = Time.current
-
-    render json: options
-  end
-
-  def complete
-    challenge = session.delete(:webauthn_challenge)
-    created_at = session.delete(:webauthn_challenge_created_at)
-
-    unless challenge && created_at
-      return render json: { error: 'No active authentication challenge' },
-                    status: :unauthorized
-    end
-
-    credential_id = Base64.decode64(params[:credential][:id])
-    credential = Credential.find_by!(credential_id: credential_id)
-
-    webauthn_credential = WebAuthn::Credential.from_get(params[:credential])
-
-    begin
-      webauthn_credential.verify(
-        challenge,
-        public_key: credential.public_key,
-        sign_count: credential.sign_count
-      )
-
-      # Check for signature counter decrease (cloned authenticator)
-      if webauthn_credential.sign_count > 0 &&
-         webauthn_credential.sign_count <= credential.sign_count
-        credential.flag_as_compromised!
-        return render json: { error: 'Invalid authenticator' },
-                      status: :unauthorized
-      end
-
-      credential.update!(
-        sign_count: webauthn_credential.sign_count,
-        last_used_at: Time.current
-      )
-
-      login(credential.user)
-      render json: { success: true, redirect_url: jobs_path }
-
-    rescue WebAuthn::Error => e
-      render json: { error: e.message }, status: :unauthorized
-    end
-  end
-end
-```
-
-## Stimulus JavaScript Controller
-
-```javascript
-// app/javascript/controllers/webauthn_controller.js
-import { Controller } from "@hotwired/stimulus"
-
-export default class extends Controller {
-  static values = {
-    beginUrl: String,
-    completeUrl: String,
-    mode: String  // "registration" or "authentication"
-  }
-
-  static targets = ["submitButton", "errorContainer"]
-
-  async start(event) {
-    event.preventDefault()
-
-    if (this.modeValue === "registration") {
-      await this.startRegistration()
-    } else {
-      await this.startAuthentication()
-    }
-  }
-
-  async startRegistration() {
-    try {
-      this.setLoading(true)
-
-      // 1. Get registration options from server
-      const beginResponse = await fetch(this.beginUrlValue, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-CSRF-Token': this.csrfToken
-        }
-      })
-
-      if (!beginResponse.ok) throw new Error('Failed to begin registration')
-
-      const options = await beginResponse.json()
-
-      // 2. Parse options using native browser API
-      const publicKeyOptions = PublicKeyCredential.parseCreationOptionsFromJSON(options)
-
-      // 3. Create credential
-      const credential = await navigator.credentials.create({
-        publicKey: publicKeyOptions
-      })
-
-      // 4. Send credential to server using native toJSON()
-      const completeResponse = await fetch(this.completeUrlValue, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-CSRF-Token': this.csrfToken
-        },
-        body: JSON.stringify({ credential: credential.toJSON() })
-      })
-
-      if (!completeResponse.ok) throw new Error('Failed to complete registration')
-
-      const result = await completeResponse.json()
-
-      // 5. Redirect on success
-      if (result.success && result.redirect_url) {
-        window.location.href = result.redirect_url
-      }
-
-    } catch (error) {
-      this.handleError(error)
-    } finally {
-      this.setLoading(false)
-    }
-  }
-
-  handleError(error) {
-    let message = 'An error occurred. Please try again.'
-
-    // Map WebAuthn errors to user-friendly messages
-    if (error.name === 'NotAllowedError') {
-      message = 'Sign-in was canceled. Please try again.'
-    } else if (error.name === 'InvalidStateError') {
-      message = 'This passkey is already registered on this device.'
-    } else if (error.name === 'NotSupportedError') {
-      message = 'Passkeys are not supported on this browser.'
-    }
-
-    if (this.hasErrorContainerTarget) {
-      this.errorContainerTarget.textContent = message
-      this.errorContainerTarget.classList.remove('hidden')
-    }
-  }
-
-  get csrfToken() {
-    return document.querySelector('meta[name="csrf-token"]')?.content || ''
-  }
-}
-```
-
-## Configuration
-
-### WebAuthn Configuration
-
-```ruby
-# config/initializers/webauthn.rb
-WebAuthn.configure do |config|
-  config.allowed_origins = if Rails.env.production?
-    [ ENV.fetch('WEBAUTHN_ORIGIN') ]  # e.g., ["https://intaqt.example.com"]
-  else
-    [ 'http://localhost:3000' ]
-  end
-
-  config.rp_name = ENV.fetch('WEBAUTHN_RP_NAME', 'Your App Name')
-
-  config.rp_id = if Rails.env.production?
-    ENV.fetch('WEBAUTHN_RP_ID')  # e.g., "intaqt.example.com"
-  else
-    'localhost'
-  end
-
-  config.credential_options_timeout = 60_000  # 60 seconds
-  config.encoding = :base64url
-  config.algorithms = ['ES256', 'RS256']
-end
-```
-
-**Configuration notes:**
-- `allowed_origins` accepts an array of origin strings (protocol + host + port)
-- `rp_id` is the domain without protocol/port
-- Environment-specific configuration for development/staging/production
-
-### Session Store Configuration
-
-**CRITICAL:** Passkey authentication requires database-backed sessions to store WebAuthn challenges.
+This needs a database-backed session store — a ~170 byte challenge doesn't
+belong in a cookie:
 
 ```ruby
 # config/initializers/session_store.rb
@@ -971,433 +153,343 @@ Rails.application.config.session_store :active_record_store,
   expire_after: 1.week
 ```
 
-**Why database-backed sessions:**
-- ✅ **Larger storage** - WebAuthn challenges (~170 bytes) fit comfortably
-- ✅ **Server-side storage** - Challenges never sent to client
-- ✅ **Better security** - Session data encrypted in database
-- ✅ **Automatic cleanup** - Expired sessions removed automatically
+Generate the table with `bin/rails generate active_record:session_migration`.
 
-**Session configuration explained:**
-- `key` - Cookie name (customize for your app)
-- `secure: true` - Only send cookie over HTTPS in production
-- `httponly: true` - Prevent JavaScript access to session cookie
-- `same_site: :lax` - CSRF protection, allows navigation from external sites
-- `expire_after: 1.week` - Auto-logout after inactivity
+## Magic links
 
-**Required migration:**
-```bash
-# Generate sessions table migration
-bin/rails generate active_record:session_migration
-bin/rails db:migrate
-```
+`signed_id` gives tamper-proof, expiring, purpose-scoped tokens with no extra
+gem and no token table, and it works with UUID primary keys.
 
-**Session table schema:**
 ```ruby
-create_table :sessions do |t|
-  t.string :session_id, null: false
-  t.text :data
-  t.timestamps
-end
+class SessionsController < ApplicationController
+  skip_before_action :require_authentication, only: [:new, :magic_link]
 
-add_index :sessions, :session_id, unique: true
-add_index :sessions, :updated_at
+  def magic_link
+    user = User.find_signed!(params[:token], purpose: :passkey_setup)
+    login(user)
+    redirect_to new_credential_path, notice: "Welcome! Let's set up your passkey."
+  rescue ActiveSupport::MessageVerifier::InvalidSignature
+    redirect_to login_path, alert: "Invalid or expired setup link. Contact an administrator."
+  end
+end
 ```
 
-### FIDO Metadata Configuration (Optional)
+Admin side — rate limited per admin/target pair, and logged for audit:
 
-For displaying device names and authenticator information:
+```ruby
+class UsersController < ApplicationController
+  before_action :require_admin, only: :send_passkey_setup_link
+
+  rate_limit to: 3, within: 1.hour,
+             by: -> { [current_user.id, params[:id]] },
+             only: :send_passkey_setup_link
+
+  def send_passkey_setup_link
+    user = User.find(params[:id])
+    PasskeyMailer.setup_passkey(user, user.generate_magic_link_token).deliver_later
+    Rails.logger.info "Admin #{current_user.email} sent passkey setup link to #{user.email}"
+
+    render turbo_stream: turbo_stream.replace(
+      "user_#{user.id}_actions",
+      partial: "users/actions", locals: { user: user, link_sent: true }
+    )
+  end
+end
+```
+
+The token is replayable within its 30-minute window. To make it strictly
+single-use, track consumption:
+
+```ruby
+def verify_magic_link!
+  raise "Magic link already used" if magic_link_used_at&.after?(30.minutes.ago)
+  update_column(:magic_link_used_at, Time.current)
+end
+```
+
+## Registration controller
+
+```ruby
+class Webauthn::RegistrationController < ApplicationController
+  # No skip_before_action — only reachable once logged in via magic link.
+  rate_limit to: 5, within: 15.minutes, by: -> { current_user&.id }
+
+  def begin
+    user = current_user
+
+    options = WebAuthn::Credential.options_for_create(
+      # user.id must be valid unpadded base64url — the browser decodes it.
+      # Give the model a webauthn_id column from WebAuthn.generate_user_id
+      # rather than passing a raw primary key; an integer id fails outright.
+      user: { id: user.webauthn_id, name: user.email, display_name: user.name },
+      exclude: user.credentials.pluck(:credential_id).map { |id|
+        Base64.urlsafe_encode64(id, padding: false)
+      },
+      authenticator_selection: { resident_key: "preferred", user_verification: "preferred" }
+    )
+
+    # Challenge only — never a user id.
+    session[:webauthn_challenge] = options.challenge
+    session[:webauthn_challenge_created_at] = Time.current
+
+    render json: options
+  end
+
+  def complete
+    challenge = session.delete(:webauthn_challenge)
+    created_at = session.delete(:webauthn_challenge_created_at)
+
+    unless challenge && created_at
+      return render json: { error: "No active registration challenge" },
+                    status: :unprocessable_entity
+    end
+
+    if Time.current - created_at > 10.minutes
+      return render json: { error: "Challenge expired" }, status: :unprocessable_entity
+    end
+
+    user = current_user
+    webauthn_credential = WebAuthn::Credential.from_create(params[:credential])
+    webauthn_credential.verify(challenge)
+
+    user.credentials.create!(
+      credential_id: Base64.urlsafe_decode64(webauthn_credential.id),
+      public_key: webauthn_credential.public_key,
+      sign_count: webauthn_credential.sign_count,
+      aaguid: webauthn_credential.response.aaguid,
+      transports: webauthn_credential.response.transports || []
+    )
+
+    # No login() here — that call is the takeover vector.
+    render json: { success: true, redirect_url: jobs_path }
+  rescue WebAuthn::Error => e
+    render json: { error: e.message }, status: :unprocessable_entity
+  end
+end
+```
+
+## Authentication controller
+
+```ruby
+class Webauthn::AuthenticationController < ApplicationController
+  skip_before_action :require_authentication
+
+  rate_limit to: 10, within: 15.minutes, by: -> { request.remote_ip }
+
+  def begin
+    options = WebAuthn::Credential.options_for_get(user_verification: "preferred")
+    session[:webauthn_challenge] = options.challenge
+    session[:webauthn_challenge_created_at] = Time.current
+    render json: options
+  end
+
+  def complete
+    challenge = session.delete(:webauthn_challenge)
+    created_at = session.delete(:webauthn_challenge_created_at)
+
+    unless challenge && created_at
+      return render json: { error: "No active challenge" }, status: :unauthorized
+    end
+
+    credential = Credential.find_by!(
+      credential_id: Base64.urlsafe_decode64(params[:credential][:id])
+    )
+    webauthn_credential = WebAuthn::Credential.from_get(params[:credential])
+
+    webauthn_credential.verify(
+      challenge,
+      public_key: credential.public_key,
+      sign_count: credential.sign_count
+    )
+
+    credential.update!(sign_count: webauthn_credential.sign_count, last_used_at: Time.current)
+    login(credential.user)
+    render json: { success: true, redirect_url: jobs_path }
+
+  # A counter that fails to advance suggests a cloned authenticator. `verify`
+  # raises this itself — rescue it ahead of the generic WebAuthn::Error, or the
+  # credential never gets flagged.
+  rescue WebAuthn::SignCountVerificationError
+    credential.flag_as_compromised!
+    render json: { error: "Invalid authenticator" }, status: :unauthorized
+  rescue WebAuthn::Error => e
+    render json: { error: e.message }, status: :unauthorized
+  end
+end
+```
+
+Don't hand-roll the clone check. `verify` already compares the signature
+counter and raises `WebAuthn::SignCountVerificationError`, and its check is
+stricter than the obvious one — it also catches a new count of 0 against a
+stored count above 0, which a `sign_count > 0` guard skips.
+
+The gem verifies origin and RP ID hash for you — both must match exactly,
+including scheme, port, and subdomain.
+
+## Stimulus controller
+
+The browser's native JSON APIs handle every ArrayBuffer ↔ base64url conversion,
+so no encoding helpers are needed:
+
+```javascript
+// app/javascript/controllers/webauthn_controller.js
+import { Controller } from "@hotwired/stimulus"
+
+export default class extends Controller {
+  static values = { beginUrl: String, completeUrl: String, mode: String }
+  static targets = ["submitButton", "errorContainer"]
+
+  async startRegistration() {
+    try {
+      this.setLoading(true)
+
+      const options = await (await fetch(this.beginUrlValue, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-CSRF-Token": this.csrfToken }
+      })).json()
+
+      const credential = await navigator.credentials.create({
+        publicKey: PublicKeyCredential.parseCreationOptionsFromJSON(options)
+      })
+
+      const result = await (await fetch(this.completeUrlValue, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-CSRF-Token": this.csrfToken },
+        body: JSON.stringify({ credential: credential.toJSON() })
+      })).json()
+
+      if (result.success) window.location.href = result.redirect_url
+    } catch (error) {
+      this.handleError(error)
+    } finally {
+      this.setLoading(false)
+    }
+  }
+
+  handleError(error) {
+    const messages = {
+      NotAllowedError: "Sign-in was canceled. Please try again.",
+      InvalidStateError: "This passkey is already registered on this device.",
+      NotSupportedError: "Passkeys are not supported on this browser."
+    }
+    this.errorContainerTarget.textContent = messages[error.name] ?? "An error occurred."
+    this.errorContainerTarget.classList.remove("hidden")
+  }
+
+  // Optional chaining matters — the meta tag may be absent in tests.
+  get csrfToken() {
+    return document.querySelector("meta[name='csrf-token']")?.content || ""
+  }
+}
+```
+
+## Configuration
+
+```ruby
+# config/initializers/webauthn.rb
+WebAuthn.configure do |config|
+  config.allowed_origins = if Rails.env.test?
+    TestOriginChecker.new                # see testing section
+  elsif Rails.env.production?
+    [ ENV.fetch("WEBAUTHN_ORIGIN") ]     # protocol + host + port
+  else
+    [ "http://localhost:3000" ]
+  end
+
+  config.rp_id = Rails.env.production? ? ENV.fetch("WEBAUTHN_RP_ID") : "localhost"
+  config.rp_name = ENV.fetch("WEBAUTHN_RP_NAME", "Your App Name")
+
+  config.encoding = :base64url  # required by the native browser JSON APIs
+  config.credential_options_timeout = 60_000
+  config.algorithms = ["ES256", "RS256"]
+end
+```
+
+`rp_id` is a bare domain — no scheme, no port.
+
+Optionally add the `fido_metadata` gem to turn AAGUIDs into real device names
+("YubiKey 5 NFC" rather than "Security Key"). It needs an explicit cache
+backend or `Store` raises at runtime, and it caches until the MDS blob's own
+`nextUpdate` — typically weeks, not a fixed day:
 
 ```ruby
 # config/initializers/fido_metadata.rb
-FidoMetadata.configure do |config|
-  # Use Rails cache for storing fetched metadata
-  # The gem automatically handles caching with a 24-hour TTL
-  config.cache_backend = Rails.cache
-end
+FidoMetadata.configure { |config| config.cache_backend = Rails.cache }
 ```
 
-**What this provides:**
-- Device names: "YubiKey 5 NFC", "Touch ID (MacBook Pro)", etc.
-- Authenticator icons and descriptions
-- FIDO certification status
-- Attachment hints (platform vs cross-platform)
-
-**How it works:**
-- First request for each AAGUID downloads metadata from FIDO MDS
-- Metadata cached for 24 hours via Rails cache
-- Subsequent requests use cached data
-- No pre-population needed
-
-**Without this:**
-- All devices show "Security Key" or "Unknown Authenticator"
-- Still works, just less user-friendly
-
-## Rate Limiting
+Resolve it off the request. `fetch_statement` returns nil for an unknown
+AAGUID rather than raising, so guard on the return value:
 
 ```ruby
-# config/environments/production.rb
-Rails.application.configure do
-  config.action_controller.rate_limiting_cache_store = :solid_cache_store
-end
-
-# app/controllers/application_controller.rb
-class ApplicationController < ActionController::Base
-  rescue_from ActionController::RateLimitExceeded do |exception|
-    respond_to do |format|
-      format.json do
-        render json: {
-          error: "Rate limit exceeded. Please try again later.",
-          retry_after: exception.retry_after
-        }, status: :too_many_requests
-      end
-
-      format.html do
-        flash[:alert] = "Too many attempts. Please try again in #{exception.retry_after} seconds."
-        redirect_back fallback_location: root_path
-      end
-    end
-  end
-end
-```
-
-## Testing with Virtual Authenticator
-
-```ruby
-# test/application_system_test_case.rb
-class ApplicationSystemTestCase < ActionDispatch::SystemTestCase
-  def setup_virtual_authenticator(options = {})
-    @virtual_authenticator_id = driver.add_virtual_authenticator({
-      protocol: 'ctap2',           # FIDO2 protocol
-      transport: 'internal',       # Platform authenticator
-      hasResidentKey: true,        # Supports discoverable credentials
-      hasUserVerification: true,   # Supports biometrics/PIN
-      isUserVerified: true         # User is verified by default
-    }.merge(options))
-  end
-
-  def remove_virtual_authenticator
-    if @virtual_authenticator_id
-      driver.remove_virtual_authenticator(@virtual_authenticator_id)
-      @virtual_authenticator_id = nil
-    end
-  end
-end
-
-# test/system/passkey_authentication_test.rb
-class PasskeyAuthenticationTest < ApplicationSystemTestCase
-  setup do
-    @user = users(:one)
-    setup_virtual_authenticator
-  end
-
-  teardown do
-    remove_virtual_authenticator
-  end
-
-  test "user registers first passkey via magic link" do
-    token = @user.generate_magic_link_token
-    visit magic_link_path(token)
-
-    assert_current_path new_credential_path
-    assert_text "Set up your passkey"
-
-    click_button "Create passkey"
-
-    # Virtual authenticator handles WebAuthn ceremony
-    assert_current_path jobs_path, wait: 5
-
-    @user.reload
-    assert @user.passkey_registered?
-  end
-end
-```
-
-## Security Considerations
-
-### Never trust a user id from params or session during registration
-
-The `Webauthn::RegistrationController` actions must derive the user from
-`current_user` only. Specifically:
-
-- `begin` must NOT do `User.find(params[:user_id] || current_user.id)`.
-- `begin` must NOT stash `session[:webauthn_user_id]`.
-- `complete` must NOT read user id from the session or params.
-- `complete` must NOT call `login(user)` at all — the user is already logged
-  in via the magic link that landed them on the setup page.
-
-If any of those is wrong, an authenticated attacker can pass a victim's id to
-`begin`, complete the WebAuthn ceremony with their own authenticator, and end
-up logged in as the victim with a persistent passkey on their own device.
-Without RBAC this is full account takeover from any login. The ceremony
-finishing successfully proves only that the attacker possesses *some*
-authenticator — it says nothing about which user the credential should belong
-to. That binding has to come from the server-side authenticated session.
-
-A concrete regression test for this:
-
-```ruby
-test "begin ignores user_id param targeting another user" do
-  login_as(@user)  # current_user = @user
-  post webauthn_registration_begin_path, params: { user_id: @other_user.id }
-  assert_response :success
-
-  json = JSON.parse(response.body)
-  # Response must bind to current_user, not the supplied victim id.
-  assert_equal @user.email, json["user"]["name"]
-  refute_equal @other_user.id, session[:webauthn_user_id]
-end
-```
-
-### Signature Counter Validation
-
-Critical for detecting cloned authenticators:
-
-```ruby
-if webauthn_credential.sign_count > 0 &&
-   webauthn_credential.sign_count <= credential.sign_count
-  # Counter decreased or didn't increase = possible clone
-  credential.flag_as_compromised!
-  Rails.logger.warn "Signature counter anomaly detected"
-  return render json: { error: 'Invalid authenticator' }, status: :unauthorized
-end
-```
-
-### Origin Validation
-
-The webauthn-ruby gem automatically verifies:
-- Origin in `clientDataJSON` matches configured origin exactly
-- RP ID hash in `authenticatorData` matches SHA-256(rp_id)
-- Must match exactly (https vs http, port, subdomain)
-
-### FIDO Metadata
-
-Optionally fetch authenticator metadata:
-
-```ruby
-# Gemfile
-gem 'fido_metadata'
-
-# app/jobs/fetch_authenticator_metadata_job.rb
 class FetchAuthenticatorMetadataJob < ApplicationJob
   def perform(credential_id)
     credential = Credential.find(credential_id)
     return if credential.aaguid.blank?
 
-    store = FidoMetadata::Store.new
-    statement = store.fetch_statement(aaguid: credential.aaguid)
+    statement = FidoMetadata::Store.new.fetch_statement(aaguid: credential.aaguid)
 
     if statement
-      credential.update!(
-        device_name: statement.description,
-        metadata: {
-          description: statement.description,
-          is_fido_certified: statement.fido_certified?
-        }
-      )
-    end
-  rescue KeyError
-    credential.update!(device_name: "Unknown Authenticator")
-  end
-end
-
-# Trigger after credential creation
-class Credential < ApplicationRecord
-  after_create :enqueue_metadata_fetch
-
-  private
-
-  def enqueue_metadata_fetch
-    FetchAuthenticatorMetadataJob.perform_later(id)
-  end
-end
-```
-
-## Required Gems
-
-```ruby
-# Gemfile
-gem 'webauthn', '~> 3.4'
-gem 'fido_metadata'  # Optional, for device metadata
-```
-
-## Routes
-
-```ruby
-# config/routes.rb
-Rails.application.routes.draw do
-  namespace :webauthn do
-    namespace :registration do
-      post :begin
-      post :complete
-    end
-    namespace :authentication do
-      post :begin
-      post :complete
+      credential.update!(device_name: statement.description,
+                         metadata: { description: statement.description })
+    else
+      credential.update!(device_name: "Unknown Authenticator")
     end
   end
-
-  resources :credentials, only: [:index, :new, :destroy]
-
-  get '/login', to: 'sessions#new'
-  get '/login/:token', to: 'sessions#magic_link', as: :magic_link
-  delete '/logout', to: 'sessions#destroy'
 end
 ```
 
-## Testing with Virtual Authenticator (Comprehensive Guide)
+Certification status isn't on the statement — it lives on the entry's
+`status_reports`. And under the default `attestation: none`, `aaguid` comes
+back zeroed, so this job is a no-op for most registrations.
 
-### Why Virtual Authenticator
+## Rate limiting
 
-**Without virtual authenticator:**
-- ❌ Can't test WebAuthn flows (browser shows real biometric prompts)
-- ❌ Requires physical hardware (YubiKeys, phones with biometrics)
-- ❌ Can't run in CI/CD pipelines
-- ❌ Can't test error scenarios (user cancellation, timeout, etc.)
+Rails' own `ActionController::RateLimiting` is enough; rack-attack isn't needed.
 
-**With virtual authenticator:**
-- ✅ Fully automated E2E passkey testing
-- ✅ No physical hardware needed
-- ✅ Works in CI/CD (headless Chrome)
-- ✅ Test all WebAuthn flows programmatically
-- ✅ Fast, reliable, repeatable tests
+```
+def rate_limit(to:, within:, by: -> { request.remote_ip },
+               with: -> { raise TooManyRequests },
+               store: cache_store, name: nil, scope: nil, **options)
+```
 
-### Prerequisites
+Exceeding the limit raises `ActionController::TooManyRequests`. Rails' exception
+wrapper already maps it to a 429, so no `rescue_from` is needed for the status
+code alone. It's a bare exception class — there is no
+`retry_after` on it and no message payload, so a custom response has to come
+from `with:` rather than from reading the exception:
 
 ```ruby
-# Gemfile
-gem 'selenium-webdriver', '~> 4.35'  # Virtual authenticator support in 4.x+
-gem 'webauthn', '~> 3.4'
+rate_limit to: 10, within: 15.minutes,
+           by: -> { request.remote_ip },
+           with: -> { render json: { error: "Too many attempts." },
+                             status: :too_many_requests }
 ```
 
-### Critical Configuration for WebAuthn Tests
+The backing store is `config.action_controller.cache_store`, or `store:` per
+call — there is no `rate_limiting_cache_store` setting.
 
-#### 1. Hostname Setup (CRITICAL - Answers "How do you setup hostname in system tests?")
+## Testing with a virtual authenticator
 
-**The Problem:**
-WebAuthn spec prohibits IP addresses as RP ID. Using `127.0.0.1` causes `SecurityError: This is an invalid domain`.
+Selenium's virtual authenticator runs the whole ceremony in headless Chrome, so
+passkey flows are testable in CI without hardware. Three settings have to line
+up or nothing works:
 
-**The Solution:**
+**Hostname.** The WebAuthn spec rejects IP addresses as RP ID, and Capybara
+defaults to `127.0.0.1`, which yields `SecurityError: This is an invalid
+domain`. `localhost` is specified as a special case.
 
-```ruby
-# test/application_system_test_case.rb
-class ApplicationSystemTestCase < ActionDispatch::SystemTestCase
-  setup do
-    # CRITICAL: Force Capybara to use "localhost" instead of "127.0.0.1"
-    Capybara.server_host = "localhost"
-  end
-end
-```
-
-**Why this works:**
-- WebAuthn spec treats `localhost` as a special case (domain name, not IP)
-- Capybara defaults to `127.0.0.1` which WebAuthn rejects
-- `rp_id: "localhost"` matches origin `http://localhost:PORT`
-- Without this, you get "This is an invalid domain" errors
-
-**Configuration must match:**
-```ruby
-# config/initializers/webauthn.rb
-WebAuthn.configure do |config|
-  config.rp_id = if Rails.env.test?
-    "localhost"  # MUST match Capybara.server_host
-  else
-    "your-domain.com"
-  end
-end
-```
-
-#### 2. Handle Capybara's Random Ports
-
-**The Problem:**
-Capybara uses random ports (e.g., `http://localhost:40123`), so you can't hardcode allowed origins.
-
-**The Solution:**
-
-```ruby
-# config/initializers/webauthn.rb
-
-# Custom origin checker for Capybara's random ports
-class TestOriginChecker
-  def include?(origin)
-    uri = URI.parse(origin)
-    (uri.host == "localhost" || uri.host == "127.0.0.1") && uri.scheme == "http"
-  rescue URI::InvalidURIError
-    false
-  end
-end
-
-WebAuthn.configure do |config|
-  config.allowed_origins = if Rails.env.test?
-    TestOriginChecker.new  # Matches any localhost port
-  else
-    [ ENV.fetch("WEBAUTHN_ORIGIN") ]
-  end
-end
-```
-
-**Why this works:**
-- webauthn-ruby expects object responding to `include?(origin)`
-- Pattern matches any `http://localhost:*` origin
-- Works with Capybara's random port selection
-- Can't use array of hardcoded URLs
-
-####3. WebAuthn Encoding (CRITICAL)
-
-```ruby
-# config/initializers/webauthn.rb
-WebAuthn.configure do |config|
-  # MUST be :base64url for native browser APIs
-  config.encoding = :base64url  # NOT :base64
-end
-```
-
-**Why :base64url:**
-- Browser's `PublicKeyCredential.parseCreationOptionsFromJSON()` requires base64url (RFC 4648 §5)
-- Base64url uses `-` and `_` instead of `+` and `/`, no padding
-- Standard `:base64` causes: `EncodingError: 'challenge' contains invalid base64url data`
-
-#### 4. Complete Test Configuration Checklist
-
-**test/application_system_test_case.rb:**
 ```ruby
 class ApplicationSystemTestCase < ActionDispatch::SystemTestCase
   driven_by :selenium, using: :headless_chrome
 
-  setup do
-    # CRITICAL: Set hostname to localhost (not 127.0.0.1)
-    Capybara.server_host = "localhost"
-  end
+  setup { Capybara.server_host = "localhost" }
 end
 ```
 
-**config/initializers/webauthn.rb:**
+**Random ports.** Capybara picks a port per run, so `allowed_origins` can't be a
+fixed array. The gem accepts anything responding to `include?`:
+
 ```ruby
-WebAuthn.configure do |config|
-  # Allowed origins (webauthn-ruby 3.4.0+)
-  config.allowed_origins = if Rails.env.test?
-    TestOriginChecker.new  # Handles Capybara's random ports
-  elsif Rails.env.production?
-    [ ENV.fetch('WEBAUTHN_ORIGIN') ]
-  else
-    [ 'http://localhost:3000' ]
-  end
-
-  config.rp_id = if Rails.env.test?
-    "localhost"  # MUST match Capybara.server_host
-  elsif Rails.env.production?
-    ENV.fetch('WEBAUTHN_RP_ID')
-  else
-    'localhost'
-  end
-
-  # CRITICAL: Use base64url encoding for native browser APIs
-  config.encoding = :base64url  # NOT :base64
-
-  config.credential_options_timeout = 60_000
-  config.algorithms = ['ES256', 'RS256']
-end
-
-# Custom origin checker for test environment
 class TestOriginChecker
   def include?(origin)
     uri = URI.parse(origin)
@@ -1408,593 +500,172 @@ class TestOriginChecker
 end
 ```
 
-### Test Helper Methods
+**Encoding.** `config.encoding = :base64url`. With plain `:base64` the native
+browser APIs raise `EncodingError: 'challenge' contains invalid base64url data`.
+
+Helpers:
 
 ```ruby
-# test/application_system_test_case.rb
 class ApplicationSystemTestCase < ActionDispatch::SystemTestCase
-  # Setup virtual authenticator for passkey testing
   def setup_virtual_authenticator(options = {})
-    default_options = Selenium::WebDriver::VirtualAuthenticatorOptions.new(
-      protocol: :ctap2,           # FIDO2/WebAuthn protocol
-      transport: :internal,       # Platform authenticator (Touch ID, Face ID)
-      resident_key: true,         # REQUIRED for passkeys
-      user_verified: true,        # Auto-verify user (bypass biometric prompt)
-      user_verification: true     # Supports user verification
+    defaults = Selenium::WebDriver::VirtualAuthenticatorOptions.new(
+      protocol: :ctap2,        # FIDO2
+      transport: :internal,    # platform authenticator
+      resident_key: true,      # required for passkeys
+      user_verified: true,     # skip the biometric prompt
+      user_verification: true
     )
-
-    # Merge custom options
-    options.each { |key, value| default_options.send("#{key}=", value) }
-
-    # Add to browser
-    @virtual_authenticator = page.driver.browser.add_virtual_authenticator(default_options)
+    options.each { |key, value| defaults.send("#{key}=", value) }
+    @virtual_authenticator = page.driver.browser.add_virtual_authenticator(defaults)
   end
 
   def remove_virtual_authenticator
-    if @virtual_authenticator
-      @virtual_authenticator.remove!
-      @virtual_authenticator = nil
-    end
+    @virtual_authenticator&.remove!
+    @virtual_authenticator = nil
   rescue Selenium::WebDriver::Error::InvalidArgumentError
     @virtual_authenticator = nil
   end
 
-  # Register passkey through UI (helper for tests)
   def register_passkey_via_ui(user)
-    token = user.generate_magic_link_token
-    visit magic_link_path(token)
-
+    visit magic_link_path(user.generate_magic_link_token)
     assert_current_path new_credential_path
     click_button "Create passkey"
     assert_current_path jobs_path, wait: 10
-
-    user.reload
-    user.credentials.last
+    user.reload.credentials.last
   end
 end
 ```
-
-### VirtualAuthenticatorOptions Reference
-
-| Parameter | Type | Default | Purpose |
-|-----------|------|---------|---------|
-| `protocol` | Symbol | `:ctap2` | `:ctap2` (WebAuthn/FIDO2) or `:u2f` (legacy) |
-| `transport` | Symbol | `:usb` | `:internal` (platform), `:usb`, `:nfc`, `:ble` |
-| `resident_key` | Boolean | `false` | **MUST be `true` for passkeys** |
-| `user_verification` | Boolean | `false` | Whether authenticator supports biometrics/PIN |
-| `user_verified` | Boolean | `false` | Auto-verify user (bypass prompts in tests) |
-| `user_consenting` | Boolean | `true` | Auto-consent to credential usage |
-
-**For passkey testing:**
-```ruby
-setup_virtual_authenticator(
-  protocol: :ctap2,        # Modern WebAuthn
-  transport: :internal,    # Platform authenticator
-  resident_key: true,      # REQUIRED for passkeys
-  user_verified: true      # Skip biometric prompts
-)
-```
-
-### Test Patterns
-
-#### Pattern 1: Registration Test
 
 ```ruby
 class PasskeyAuthenticationTest < ApplicationSystemTestCase
   setup do
     @user = users(:one)
-    @user.credentials.destroy_all  # Clean slate
-    setup_virtual_authenticator
+    @user.credentials.destroy_all  # fixture credentials have no matching private key
+    setup_virtual_authenticator    # before any visit
   end
 
-  teardown do
-    remove_virtual_authenticator
-  end
+  teardown { remove_virtual_authenticator }  # else credentials leak between tests
 
   test "user registers passkey via magic link" do
-    token = @user.generate_magic_link_token
-    visit magic_link_path(token)
-
-    assert_current_path new_credential_path
+    visit magic_link_path(@user.generate_magic_link_token)
     click_button "Create passkey"
 
-    # Virtual authenticator handles WebAuthn ceremony automatically
-    assert_current_path jobs_path, wait: 10
-
-    @user.reload
-    assert @user.passkey_registered?
-    assert_equal 1, @user.credentials.count
-  end
-end
-```
-
-#### Pattern 2: Authentication Test
-
-```ruby
-test "user authenticates with passkey" do
-  # Register credential first
-  credential = register_passkey_via_ui(@user)
-  assert credential.present?
-
-  # Logout
-  find("el-dropdown button").click
-  click_on "Sign out"
-
-  # Login with passkey
-  visit login_path
-  click_button "Sign in with passkey"
-
-  # Virtual authenticator provides registered credential
-  assert_current_path jobs_path, wait: 10
-  assert_text @user.initials
-end
-```
-
-#### Pattern 3: Using Test Setup Helper
-
-```ruby
-class JobWorkflowTest < ApplicationSystemTestCase
-  setup do
-    @user = users(:one)
-    setup_virtual_authenticator
-    register_passkey_via_ui(@user)  # User now logged in
-  end
-
-  teardown do
-    remove_virtual_authenticator
-  end
-
-  test "complete job workflow" do
-    # User already logged in from setup
-    assert_current_path jobs_path
-    # Continue with test...
-  end
-end
-```
-
-### Critical Implementation Details
-
-#### Credential ID Storage (CRITICAL BUG FIX)
-
-**Problem:**
-webauthn-ruby returns credential IDs as base64url strings, but storing them directly in binary columns causes mismatch during authentication.
-
-**Symptoms:**
-```ruby
-ActiveRecord::RecordNotFound: Couldn't find Credential
-```
-
-**Root Cause:**
-```ruby
-# During REGISTRATION (WRONG):
-credential.create!(
-  credential_id: webauthn_credential.id  # String "YH119tlb..." stored as ASCII bytes
-)
-
-# During AUTHENTICATION:
-credential_id = Base64.urlsafe_decode64(params[:credential][:id])  # Binary bytes
-Credential.find_by!(credential_id: credential_id)  # Won't match!
-```
-
-**Solution:**
-```ruby
-# During REGISTRATION (CORRECT):
-credential.create!(
-  credential_id: Base64.urlsafe_decode64(webauthn_credential.id),  # Decode to binary
-  public_key: webauthn_credential.public_key,
-  sign_count: webauthn_credential.sign_count
-)
-
-# During AUTHENTICATION (CORRECT):
-credential_id = Base64.urlsafe_decode64(params[:credential][:id])
-credential = Credential.find_by!(credential_id: credential_id)  # Matches!
-```
-
-#### CSRF Token Handling in Tests
-
-```javascript
-// app/javascript/controllers/webauthn_controller.js
-get csrfToken() {
-  // CSRF token may not be available in test environment
-  return document.querySelector("[name='csrf-token']")?.content || ''
-}
-```
-
-**Why this works:**
-- Production: CSRF meta tag present, token included
-- Test: CSRF may be missing, but Rails test doesn't validate
-- Optional chaining (`?.`) prevents errors
-- Fallback to empty string maintains compatibility
-
-### Testing Best Practices
-
-1. **Clean fixtures between tests:**
-```ruby
-setup do
-  @user = users(:one)
-  @user.credentials.destroy_all  # Remove fixture credentials
-  setup_virtual_authenticator
-end
-```
-
-**Why:** Fixture credentials don't have matching private keys in virtual authenticator.
-
-2. **Use helper methods:**
-```ruby
-# ✅ GOOD
-register_passkey_via_ui(@user)
-
-# ❌ BAD - duplicated setup code
-token = @user.generate_magic_link_token
-visit magic_link_path(token)
-click_button "Create passkey"
-```
-
-3. **Cleanup in teardown:**
-```ruby
-teardown do
-  remove_virtual_authenticator  # Prevent credential leakage between tests
-end
-```
-
-4. **Wait for async operations:**
-```ruby
-# WebAuthn ceremonies are async (JavaScript + crypto)
-assert_current_path jobs_path, wait: 10  # NOT wait: 2
-
-# Or explicit waits
-using_wait_time(15) do
-  assert_current_path jobs_path
-end
-```
-
-5. **Test isolation:**
-Each test should have its own virtual authenticator to prevent credential leakage.
-
-### Troubleshooting WebAuthn Tests
-
-#### Error: "This is an invalid domain"
-
-```
-SecurityError: This is an invalid domain.
-```
-
-**Cause:** RP ID is IP address or doesn't match origin host.
-
-**Solution:**
-```ruby
-# config/initializers/webauthn.rb
-config.rp_id = "localhost"  # NOT "127.0.0.1"
-
-# test/application_system_test_case.rb
-Capybara.server_host = "localhost"  # NOT "127.0.0.1"
-```
-
-#### Error: "challenge contains invalid base64url data"
-
-```
-EncodingError: 'challenge' contains invalid base64url data
-```
-
-**Cause:** WebAuthn encoding set to `:base64` instead of `:base64url`.
-
-**Solution:**
-```ruby
-# config/initializers/webauthn.rb
-config.encoding = :base64url  # NOT :base64
-```
-
-#### Error: "excludeCredentials contains invalid base64url data"
-
-**Cause:** Credential IDs not base64url encoded for exclusion list.
-
-**Solution:**
-```ruby
-# In registration controller
-excluded_ids = user.credentials.pluck(:credential_id).map do |binary_id|
-  Base64.urlsafe_encode64(binary_id, padding: false)
-end
-
-options = WebAuthn::Credential.options_for_create(
-  exclude: excluded_ids
-)
-```
-
-#### Virtual Authenticator Not Intercepting
-
-**Symptoms:**
-- Page stays on passkey setup after clicking button
-- No redirect to jobs_path
-- No credential created
-
-**Checks:**
-1. Virtual authenticator created before page visit?
-```ruby
-setup do
-  setup_virtual_authenticator  # BEFORE visiting pages
-end
-```
-
-2. Options include `resident_key: true`?
-```ruby
-options.resident_key = true  # Required for passkeys
-```
-
-3. Transport set to `:internal`?
-```ruby
-options.transport = :internal  # Platform authenticator
-```
-
-4. Capybara using localhost?
-```ruby
-Capybara.server_host = "localhost"  # NOT "127.0.0.1"
-```
-
-#### Credential ID Mismatch
-
-**Symptoms:**
-- Registration works, authentication fails
-- "Couldn't find Credential" error
-
-**Cause:** Storing credential ID as string instead of binary.
-
-**Solution:** See "Credential ID Storage" section above.
-
-### Complete Test Example
-
-```ruby
-require "application_system_test_case"
-
-class PasskeyAuthenticationTest < ApplicationSystemTestCase
-  setup do
-    @user = users(:one)
-    @user.credentials.destroy_all
-    setup_virtual_authenticator
-  end
-
-  teardown do
-    remove_virtual_authenticator
-  end
-
-  test "user registers passkey via magic link" do
-    token = @user.generate_magic_link_token
-    visit magic_link_path(token)
-
-    assert_current_path new_credential_path
-    click_button "Create passkey"
-
-    assert_current_path jobs_path, wait: 10
-
-    @user.reload
-    assert @user.passkey_registered?
-    assert_equal 1, @user.credentials.count
+    assert_current_path jobs_path, wait: 10  # ceremonies are async; short waits flake
+    assert @user.reload.passkey_registered?
   end
 
   test "user authenticates with passkey" do
-    credential = register_passkey_via_ui(@user)
-    assert credential.present?
-
+    register_passkey_via_ui(@user)
     find("el-dropdown button").click
     click_on "Sign out"
 
     visit login_path
     click_button "Sign in with passkey"
-
     assert_current_path jobs_path, wait: 10
-    assert_text @user.initials
   end
 
   test "expired magic link is rejected" do
-    travel 31.minutes do
-      token = @user.generate_magic_link_token
-    end
-
+    token = @user.generate_magic_link_token
+    travel 31.minutes                  # mint first, then advance — not travel { mint }
     visit magic_link_path(token)
-    assert_current_path login_path
     assert_text "Invalid or expired setup link"
   end
 end
 ```
 
-## Modern 2025 WebAuthn Patterns
+## Troubleshooting
 
-### Native JSON Serialization APIs
+**`ActiveRecord::RecordNotFound` on login after successful registration.** The
+credential ID was stored as a base64url *string* while lookup decodes to binary.
+Decode on the way in: `Base64.urlsafe_decode64(webauthn_credential.id)`.
 
-Modern browsers (2024+) support native JSON serialization for WebAuthn, eliminating the need for polyfills or manual encoding/decoding.
+**`'challenge' contains invalid base64url data`.** `config.encoding` is
+`:base64`; it must be `:base64url`.
 
-**Legacy approach (pre-2024):**
-```javascript
-// Manual base64url encoding/decoding required
-function bufferToBase64url(buffer) {
-  return btoa(String.fromCharCode(...new Uint8Array(buffer)))
-    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '')
-}
-```
+**`'excludeCredentials' contains PublicKeyCredentialDescriptorJSON with invalid
+base64url data in 'id'`.** The exclusion list takes encoded strings, not the raw
+binary column — map it through `Base64.urlsafe_encode64(id, padding: false)`.
+The browser decodes unpadded, so `padding: false` is required, not cosmetic.
 
-**Modern approach (2024+):**
-```javascript
-// Registration
-const options = await fetch('/webauthn/registration/begin').then(r => r.json())
+**`SecurityError: This is an invalid domain`.** RP ID is an IP or doesn't match
+the origin host. Set `Capybara.server_host = "localhost"` and `rp_id:
+"localhost"` in test.
 
-// Native parsing (no manual conversion needed)
-const publicKeyOptions = PublicKeyCredential.parseCreationOptionsFromJSON(options)
+**Virtual authenticator never intercepts.** It was created after the page was
+visited, or is missing `resident_key: true` / `transport: :internal`.
 
-const credential = await navigator.credentials.create({ publicKey: publicKeyOptions })
+## Browser capabilities worth adopting
 
-// Native serialization (no manual conversion needed)
-await fetch('/webauthn/registration/complete', {
-  method: 'POST',
-  body: JSON.stringify({ credential: credential.toJSON() })
-})
-```
+Support varies, so feature-detect rather than assume.
 
-**Benefits:**
-- ✅ No polyfills or helper libraries needed
-- ✅ Handles all ArrayBuffer ↔ base64url conversion
-- ✅ Simpler, more maintainable code
-- ✅ Standards-compliant
-
-### PublicKeyCredentialHints (Chrome 129+)
-
-New browser feature to guide UI for credential selection.
+**Conditional UI** puts passkeys in the autofill dropdown, removing the need for
+a dedicated button. Requires `autocomplete="username webauthn"` on the input:
 
 ```javascript
-const options = await fetch('/webauthn/authentication/begin').then(r => r.json())
-
-// Add hints for better UX
-options.hints = ['client-device', 'hybrid']  // Prefer device passkeys, allow QR code
-
-const credential = await navigator.credentials.get({
-  publicKey: PublicKeyCredential.parseRequestOptionsFromJSON(options)
-})
-```
-
-**Available hints:**
-- `client-device` - Prefer passkeys on current device
-- `security-key` - Prefer external security keys (YubiKey)
-- `hybrid` - Allow cross-device authentication (QR code)
-
-**Server-side:**
-```ruby
-def begin
-  options = WebAuthn::Credential.options_for_get(
-    user_verification: 'preferred'
-  )
-
-  # Add hints to guide browser UI
-  options_hash = JSON.parse(options.to_json)
-  options_hash['hints'] = ['client-device', 'hybrid']
-
-  render json: options_hash
-end
-```
-
-### Conditional UI (Autofill)
-
-Passkeys can appear in autofill suggestions for email/username fields.
-
-**HTML:**
-```erb
-<input
-  type="email"
-  name="email"
-  autocomplete="username webauthn"  <%# CRITICAL %>
-  placeholder="Enter your email"
->
-```
-
-**JavaScript:**
-```javascript
-// Check if conditional UI is available
-const available = await PublicKeyCredential.isConditionalMediationAvailable()
-
-if (available) {
-  // Start conditional UI flow
-  const options = await fetch('/webauthn/authentication/begin').then(r => r.json())
-
+if (await PublicKeyCredential.isConditionalMediationAvailable()) {
   const credential = await navigator.credentials.get({
     publicKey: PublicKeyCredential.parseRequestOptionsFromJSON(options),
-    mediation: 'conditional'  // Enable autofill
-  })
-
-  // Send credential to server
-  await fetch('/webauthn/authentication/complete', {
-    method: 'POST',
-    body: JSON.stringify({ credential: credential.toJSON() })
+    mediation: "conditional"
   })
 }
 ```
 
-**Benefits:**
-- ✅ Seamless UX - passkeys appear in autofill dropdown
-- ✅ No extra "Sign in with passkey" button needed
-- ✅ Works alongside email/password if hybrid auth
-
-### Signal API (Credential Lifecycle Management)
-
-The WebAuthn Signal API allows servers to notify authenticators about credential state changes, keeping passkey lists in sync across devices.
-
-**After deleting a credential server-side:**
-```javascript
-// Notify authenticator to remove the credential
-PublicKeyCredential.signalUnknownCredential({
-  rpId: "example.com",
-  credentialId: deletedCredentialId
-})
-```
-
-**After user updates their profile:**
-```javascript
-// Sync display name/email with authenticator
-PublicKeyCredential.signalCurrentUserDetails({
-  rpId: "example.com",
-  userId: user.id,
-  name: user.email,
-  displayName: user.name
-})
-```
-
-**Sync full credential list (e.g., on settings page load):**
-```javascript
-// Authenticator removes any credentials not in the list
-PublicKeyCredential.signalAllAcceptedCredentials({
-  rpId: "example.com",
-  userId: user.id,
-  allAcceptedCredentialIds: validCredentialIds
-})
-```
-
-**Server-side integration:**
+**Hints** steer the browser's picker — `client-device`, `security-key`, or
+`hybrid` (cross-device via QR). Merge them into the options hash server-side:
 
 ```ruby
-# app/controllers/credentials_controller.rb
-class CredentialsController < ApplicationController
-  def destroy
-    @credential = Current.user.credentials.find(params[:id])
-    @credential.destroy
-
-    # Client-side: call signalUnknownCredential after redirect
-    # Pass deleted credential ID to JavaScript via flash or data attribute
-    redirect_to credentials_path,
-      notice: "Passkey removed",
-      flash: { deleted_credential_id: @credential.external_id }
-  end
-end
+options_hash = JSON.parse(options.to_json)
+options_hash["hints"] = ["client-device", "hybrid"]
+render json: options_hash
 ```
+
+**Signal API** keeps the authenticator's passkey list in sync with the server,
+so deleted credentials stop being offered:
 
 ```javascript
-// In Stimulus controller, after credential deletion
-if (PublicKeyCredential.signalUnknownCredential) {
-  await PublicKeyCredential.signalUnknownCredential({
-    rpId: this.rpIdValue,
-    credentialId: this.deletedCredentialIdValue
-  })
-}
+await PublicKeyCredential.signalUnknownCredential?.({ rpId, credentialId })
+await PublicKeyCredential.signalCurrentUserDetails?.({ rpId, userId, name, displayName })
+await PublicKeyCredential.signalAllAcceptedCredentials?.({ rpId, userId, allAcceptedCredentialIds })
 ```
 
-### Related Origin Requests
+**Related origin requests** share passkeys across domains (`example.com` and
+`example.co.uk`) via a `.well-known/webauthn` file served over HTTPS from the
+`rp_id` domain as `application/json`, with a top-level `origins` array. The RP
+ID domain itself isn't listed — its own origins pass the ordinary check and
+never consume budget. Clients need only support five registrable origin
+*labels*, and the limit counts labels rather than entries, so many origins
+across few suffixes are fine.
 
-Allows sharing passkeys across related domains (e.g., `example.com` and `example.co.uk`) by publishing a `.well-known/webauthn` file.
+## Gems and routes
 
-**Set up on the RP ID domain (e.g., `example.com`):**
-```json
-// https://example.com/.well-known/webauthn
-{
-  "origins": [
-    "https://example.co.uk",
-    "https://example.de",
-    "https://app.example.com"
-  ]
-}
+```ruby
+gem "webauthn", "~> 3.4"
+gem "selenium-webdriver", "~> 4.35"  # virtual authenticator support
+gem "fido_metadata"                  # optional, device names
 ```
 
-The file must be served from the `rp_id` domain. Each listed origin can use passkeys registered with that RP ID. The RP ID domain itself does not need to be listed.
+```ruby
+namespace :webauthn do
+  namespace :registration do
+    post :begin
+    post :complete
+  end
+  namespace :authentication do
+    post :begin
+    post :complete
+  end
+end
+
+resources :credentials, only: [:index, :new, :destroy]
+
+get "/login", to: "sessions#new"
+get "/login/:token", to: "sessions#magic_link", as: :magic_link
+delete "/logout", to: "sessions#destroy"
+```
 
 ## References
 
-- [W3C WebAuthn Level 3 Specification (Candidate Recommendation)](https://www.w3.org/TR/webauthn-3/)
-- [webauthn-ruby gem](https://github.com/cedarcode/webauthn-ruby)
-- [FIDO Alliance](https://fidoalliance.org/passkeys/)
-- [Selenium Virtual Authenticator](https://www.selenium.dev/documentation/webdriver/interactions/virtual_authenticator/)
-- [Selenium Ruby API - VirtualAuthenticatorOptions](https://www.selenium.dev/selenium/docs/api/rb/Selenium/WebDriver/VirtualAuthenticatorOptions.html)
+- [W3C WebAuthn Level 3](https://www.w3.org/TR/webauthn-3/)
+- [webauthn-ruby](https://github.com/cedarcode/webauthn-ruby)
+- [Selenium virtual authenticator](https://www.selenium.dev/documentation/webdriver/interactions/virtual_authenticator/)
 - [MDN Web Authentication API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Authentication_API)

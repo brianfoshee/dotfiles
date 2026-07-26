@@ -1,148 +1,36 @@
-# Production Infrastructure for Rails 8.2
+# Production Infrastructure
 
-Production-proven deployment patterns for Rails 8.2 applications using Kamal, SQLite with Litestream replication, and modern cloud infrastructure.
+Deploying a SQLite-backed Rails app: Kamal onto a VM with no public IP, traffic
+arriving through a Zero Trust tunnel, Litestream replicating to object storage,
+SSH only over a VPN.
 
 ## Contents
 
-- [Overview](#overview)
-- [Architecture Overview](#architecture-overview)
-- [Kamal Deployment](#kamal-deployment)
-  - [What is Kamal?](#what-is-kamal)
-  - [Configuration Structure](#configuration-structure)
-  - [Key Concepts](#key-concepts)
-  - [Kamal Commands](#kamal-commands)
-  - [Secrets Management](#secrets-management)
-- [Litestream: SQLite Replication](#litestream-sqlite-replication)
-  - [What is Litestream?](#what-is-litestream)
-  - [Configuration: Cloudflare R2](#configuration-cloudflare-r2)
-  - [Configuration: Azure Blob Storage](#configuration-azure-blob-storage)
-  - [Retention Strategy](#retention-strategy)
-  - [Recovery Commands](#recovery-commands)
-  - [Kamal Integration](#kamal-integration)
-- [Cloud-Init: VM Provisioning](#cloud-init-vm-provisioning)
-  - [What is Cloud-Init?](#what-is-cloud-init)
-  - [Example Cloud-Init Script](#example-cloud-init-script)
-  - [Key Components](#key-components)
-- [Zero Trust Networking](#zero-trust-networking)
-  - [The Problem with Traditional Deployment](#the-problem-with-traditional-deployment)
-  - [Zero Trust Architecture](#zero-trust-architecture)
-  - [Tunnel Configuration (Cloudflare Example)](#tunnel-configuration-cloudflare-example)
-  - [ACME/Let's Encrypt Passthrough](#acmelets-encrypt-passthrough)
-  - [R2 Bucket for Storage](#r2-bucket-for-storage)
-- [CI/CD Pipeline](#cicd-pipeline)
-  - [GitHub Actions Workflow](#github-actions-workflow)
-  - [Required Secrets](#required-secrets)
-  - [Deployment Flow](#deployment-flow)
-- [ActiveStorage with Cloud Storage](#activestorage-with-cloud-storage)
-  - [Configuration](#configuration)
-  - [Environment Configuration](#environment-configuration)
-  - [CORS Configuration](#cors-configuration)
-- [Dockerfile Best Practices](#dockerfile-best-practices)
-  - [Multi-Stage Build](#multi-stage-build)
-  - [Docker Entrypoint](#docker-entrypoint)
-  - [Key Optimizations](#key-optimizations)
-- [Thruster: HTTP Layer](#thruster-http-layer)
-  - [What is Thruster?](#what-is-thruster)
-  - [Configuration](#configuration-1)
-- [Security Considerations](#security-considerations)
-  - [Network Security](#network-security)
-  - [Application Security](#application-security)
-  - [Database Security](#database-security)
-- [Cost Optimization](#cost-optimization)
-  - [Infrastructure Costs](#infrastructure-costs)
-  - [Why SQLite is Cheaper](#why-sqlite-is-cheaper)
-- [Monitoring and Observability](#monitoring-and-observability)
-  - [Health Checks](#health-checks)
-  - [Deployment Revision](#deployment-revision)
-  - [Logging](#logging)
-  - [Kamal Log Access](#kamal-log-access)
+- [Kamal](#kamal)
+- [Litestream](#litestream)
+- [VM provisioning](#vm-provisioning)
+- [Tunnel and ACME](#tunnel-and-acme)
+- [CI/CD](#cicd)
+- [Active Storage](#active-storage)
+- [Dockerfile](#dockerfile)
+- [SSL behind a proxy](#ssl-behind-a-proxy)
+- [Health checks and logging](#health-checks-and-logging)
 - [References](#references)
 
-## Overview
-
-This guide covers the complete production infrastructure stack for deploying Rails 8.2 applications:
-- **Kamal** - Container deployment without Kubernetes
-- **Litestream** - Continuous SQLite replication to cloud storage
-- **Cloud-init** - VM provisioning automation
-- **Zero Trust networking** - Secure tunnel-based access
-- **CI/CD** - Automated testing and deployment pipelines
-
-## Architecture Overview
-
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│                     CI/CD PIPELINE                                  │
-│  PR → CI checks │ main push → build image → deploy via VPN/tunnel   │
-└────────────────────────────────┬────────────────────────────────────┘
-                                 │
-                                 ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│  CDN / EDGE (Cloudflare, Fastly, etc.)                             │
-│  ┌─────────────┐  ┌──────────────┐  ┌─────────────────────────────┐ │
-│  │ DNS (CNAME) │→ │ Zero Trust   │→ │ SSL termination + ACME      │ │
-│  │             │  │ Tunnel       │  │ passthrough rules           │ │
-│  └─────────────┘  └──────┬───────┘  └─────────────────────────────┘ │
-└──────────────────────────┼──────────────────────────────────────────┘
-                           │ (tunnel daemon on VM)
-                           ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│  CLOUD VM (No public IP)                                           │
-│  ┌──────────────────────────────────────────────────────────────┐  │
-│  │  KAMAL CONTAINERS                                            │  │
-│  │  ┌─────────────┐  ┌─────────────┐  ┌──────────────────────┐ │  │
-│  │  │ app-web     │  │ app-job     │  │ app-litestream       │ │  │
-│  │  │ Puma+Thruster│ SolidQueue   │  │ Continuous backup    │ │  │
-│  │  └──────┬──────┘  └──────┬──────┘  └──────────┬───────────┘ │  │
-│  │         │                │                    │             │  │
-│  │         ▼                ▼                    ▼             │  │
-│  │  ┌────────────────────────────────────────────────────────┐ │  │
-│  │  │  Docker Volume: /rails/storage                         │ │  │
-│  │  │  - production.sqlite3                                  │ │  │
-│  │  │  - production_queue/cache/cable.sqlite3               │ │  │
-│  │  └────────────────────────────────────────────────────────┘ │  │
-│  └──────────────────────────────────────────────────────────────┘  │
-│                                                                     │
-│  ┌─────────────────┐  ┌──────────────────────────────────────────┐ │
-│  │ Tunnel daemon   │  │ VPN (Tailscale/WireGuard for SSH access) │ │
-│  │ (cloudflared)   │  │ Firewall: only VPN ports allowed         │ │
-│  └─────────────────┘  └──────────────────────────────────────────┘ │
-└─────────────────────────────────────────────────────────────────────┘
-                           │
-                           ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│  CLOUD STORAGE                                                      │
-│  ┌────────────────────────┐  ┌─────────────────────────────────────┐│
-│  │ Database Backups       │  │ User Attachments                    ││
-│  │ (Litestream target)    │  │ (ActiveStorage service)             ││
-│  └────────────────────────┘  └─────────────────────────────────────┘│
-└─────────────────────────────────────────────────────────────────────┘
-```
-
-## Kamal Deployment
-
-### What is Kamal?
-
-Kamal is a deployment tool from 37signals that deploys containerized applications to bare VMs without Kubernetes. It handles:
-- Docker image building and pushing
-- Rolling deployments with zero downtime
-- SSL certificate management (Let's Encrypt)
-- Accessory containers (like Litestream)
-- Health checks and rollbacks
-
-### Configuration Structure
+## Kamal
 
 ```yaml
 # config/deploy.yml
 service: myapp
-image: myorg/myapp              # Registry server is prepended automatically
+image: myorg/myapp              # registry server is prepended automatically
 
 servers:
   web:
-    - app-server              # Hostname (resolved via VPN/DNS)
+    - app-server                # hostname resolved over the VPN
   job:
     hosts:
       - app-server
-    cmd: bin/jobs             # Solid Queue worker
+    cmd: bin/jobs               # Solid Queue worker
 
 proxy:
   ssl: true
@@ -160,20 +48,20 @@ env:
     RAILS_ENV: production
     RAILS_LOG_TO_STDOUT: true
     RAILS_SERVE_STATIC_FILES: true
-    JOB_CONCURRENCY: 4        # Solid Queue processes
-    WEB_CONCURRENCY: 2        # Puma workers
-    RAILS_MAX_THREADS: 5      # Threads per Puma worker
+    JOB_CONCURRENCY: 4
+    WEB_CONCURRENCY: 2
+    RAILS_MAX_THREADS: 5
   secret:
     - RAILS_MASTER_KEY
 
 volumes:
-  - "app_storage:/rails/storage"
+  - "app_storage:/rails/storage"   # named volume keeps SQLite across deploys
 
 accessories:
   tunnel:
     image: cloudflare/cloudflared:latest
     host: app-server
-    network: host             # Top-level key replaces default kamal network
+    network: host               # top-level key; replaces the default kamal network
     cmd: tunnel run
     env:
       secret:
@@ -186,103 +74,72 @@ accessories:
     files:
       - config/litestream.yml:/etc/litestream.yml
     volumes:
-      - "app_storage:/rails/storage"
+      - "app_storage:/rails/storage"   # same volume as the app
     env:
       secret:
-        - STORAGE_ACCOUNT_NAME
-        - STORAGE_ACCOUNT_KEY
+        - LITESTREAM_ACCESS_KEY_ID
+        - LITESTREAM_SECRET_ACCESS_KEY
+        - LITESTREAM_REPLICA_BUCKET
+        - LITESTREAM_REPLICA_ENDPOINT
 
 ssh:
   user: deploy
 ```
 
-### Key Concepts
-
-**Services vs Accessories:**
-- **Services** (web, job): Core application containers, managed by kamal-proxy
-- **Accessories** (litestream): Supporting containers that run alongside services
-
-**Volumes:**
-```yaml
-volumes:
-  - "app_storage:/rails/storage"
-```
-Named Docker volumes persist SQLite databases across deployments.
-
-**Proxy (kamal-proxy):**
-- Reverse proxy handling SSL termination
-- Automatic Let's Encrypt certificate management
-- Zero-downtime deployments via health checks
-
-### Kamal Commands
+Services (web, job) sit behind kamal-proxy, which terminates SSL, manages
+Let's Encrypt certificates, and health-checks new containers for zero-downtime
+rollouts. Accessories run alongside and are **not** touched by `kamal deploy` —
+boot them yourself:
 
 ```bash
-# Initial setup (first deployment)
-bin/kamal setup
-
-# Deploy new version
-bin/kamal deploy
-
-# Deploy without rebuilding image (image already pushed)
-bin/kamal deploy --skip-push
-
-# View logs
-bin/kamal logs -f
-bin/kamal logs -f -r job    # Job server logs
-
-# Access Rails console
-bin/kamal console
-
-# SSH to server
-bin/kamal ssh
-
-# Restart accessories
-bin/kamal accessory reboot litestream
+kamal accessory boot litestream      # first time
+kamal accessory reboot litestream    # after a config change
+kamal accessory logs litestream -f
 ```
 
-### Secrets Management
+Everyday commands: `bin/kamal setup` (first deploy), `deploy`,
+`deploy --skip-push` (image already pushed by CI), `logs -f [-r job]`,
+`console`, `ssh`.
+
+Secrets come from the environment via `.kamal/secrets`, which is not committed:
 
 ```bash
-# .kamal/secrets (not committed to git)
 KAMAL_REGISTRY_PASSWORD=$KAMAL_REGISTRY_PASSWORD
 RAILS_MASTER_KEY=$(cat config/master.key)
 TUNNEL_TOKEN=$TUNNEL_TOKEN
-STORAGE_ACCOUNT_NAME=$STORAGE_ACCOUNT_NAME
-STORAGE_ACCOUNT_KEY=$STORAGE_ACCOUNT_KEY
 ```
 
-Kamal reads environment variables and injects them into containers.
+## Litestream
 
-## Litestream: SQLite Replication
+Continuous replication of SQLite to object storage, with point-in-time restore
+and no application changes. The primary can also serve live read-only replicas,
+which pull pages from object storage on demand — a read-only VFS that requires
+CGO.
 
-### What is Litestream?
+Each database takes a single `replica:` map, and retention is global under
+`snapshot.retention`. Litestream is pre-1.0, so treat the config as stable in
+practice but not SemVer-guaranteed.
 
-Litestream continuously replicates SQLite databases to cloud storage (S3, Azure Blob, GCS, etc.). It provides:
-- **Continuous backup** - Changes replicated within seconds
-- **Point-in-time recovery** - Restore to any moment
-- **Zero downtime** - No application changes needed
-- **Low cost** - Uses cheap object storage
-- **Live read replicas** (v0.5+) - The primary streams changes to read-only replicas, the capability that previously required LiteFS
+**What to replicate.** Always the primary. The queue database is a judgment
+call — it holds enqueued jobs that haven't run, so replicate it if losing
+pending work in a crash matters. Skip cache and cable; both are transient and
+regenerate on demand, and replicating them just costs storage and noise.
 
-**v0.5 config changes (important):** Litestream v0.5 (Oct 2025) was a major rewrite. Each database now takes a **single `replica:` (singular map)**, not a `replicas:` list. Retention moved to a **global `snapshot.retention`** in the root config rather than per-replica. The old v0.3 WAL-segment format is not restore-compatible, and `litestream wal` became `litestream ltx`. The examples below use the v0.5 format. Litestream is still pre-1.0, so treat the config as stable-in-practice but not SemVer-guaranteed.
-
-**Which databases to back up:** replicate the **primary** database always. The Solid **cache** and **cable** databases hold transient/regenerable data — skip them to cut object-storage cost and noise. The **queue** database is a judgment call: it holds not-yet-run scheduled/enqueued jobs, so back it up if losing pending work on a crash matters. The examples below replicate primary + queue and omit cache/cable.
-
-### Configuration: Cloudflare R2
-
-R2 is S3-compatible, so Litestream uses the `s3` replica type. Each db takes one `replica:` map (v0.5). YAML anchors (`&r2_replica` / `<<: *r2_replica`) avoid repeating the shared fields. Litestream does `$VAR` interpolation after YAML parsing, so anchors and env vars work together.
+R2 is S3-compatible, so it uses the `s3` replica type. A YAML anchor avoids
+repeating the shared fields, and Litestream interpolates `$VAR` after the YAML
+parses, so anchors and env vars compose:
 
 ```yaml
-# config/litestream.yml (Litestream v0.5+)
+# config/litestream.yml
 snapshot:
-  retention: 720h                      # 30 days, global (per-replica retention was removed in v0.5)
+  retention: 720h                # 30 days, applies to every database below
 
 dbs:
   - path: /rails/storage/production.sqlite3
     replica: &r2_replica
       type: s3
       bucket: $LITESTREAM_REPLICA_BUCKET
-      endpoint: $LITESTREAM_REPLICA_ENDPOINT
+      endpoint: $LITESTREAM_REPLICA_ENDPOINT   # https://<account>.r2.cloudflarestorage.com
       region: auto
       access-key-id: $LITESTREAM_ACCESS_KEY_ID
       secret-access-key: $LITESTREAM_SECRET_ACCESS_KEY
@@ -294,15 +151,28 @@ dbs:
       <<: *r2_replica
       path: production_queue.sqlite3
 
-  # Cache and cable databases are intentionally omitted — transient/regenerable data.
+  # cache and cable intentionally omitted
 ```
 
-Environment variables:
-- `LITESTREAM_ACCESS_KEY_ID` / `LITESTREAM_SECRET_ACCESS_KEY` — R2 API token scoped to the backup bucket
-- `LITESTREAM_REPLICA_BUCKET` — bucket name (e.g. `myapp-backups`)
-- `LITESTREAM_REPLICA_ENDPOINT` — `https://<cf-account-id>.r2.cloudflarestorage.com`
+Azure is the same shape with `type: abs`, `bucket` as the container name,
+`endpoint: https://<account>.blob.core.windows.net`, and top-level
+`access-key-id` / `secret-access-key` set from the storage account name and key.
 
-Terraform for the R2 bucket:
+Retention is global, so differing windows per database means running separate
+Litestream configs and processes.
+
+Restores take the replica URL, with the same env vars set:
+
+```bash
+litestream restore -o /rails/storage/production.sqlite3 \
+  s3://myapp-backups/production.sqlite3
+
+litestream restore -o /rails/storage/production.sqlite3 \
+  -timestamp "2024-01-15T10:30:00Z" s3://myapp-backups/production.sqlite3
+
+litestream ltx s3://myapp-backups/production.sqlite3   # list available LTX files
+litestream info s3://myapp-backups/production.sqlite3
+```
 
 ```hcl
 resource "cloudflare_r2_bucket" "backups" {
@@ -313,142 +183,19 @@ resource "cloudflare_r2_bucket" "backups" {
 }
 ```
 
-### Configuration: Azure Blob Storage
+## VM provisioning
 
-```yaml
-# config/litestream.yml (Litestream v0.5+)
-access-key-id: ${STORAGE_ACCOUNT_NAME}
-secret-access-key: ${STORAGE_ACCOUNT_KEY}
-
-snapshot:
-  retention: 720h                        # 30 days, global (v0.5 removed per-replica retention)
-
-dbs:
-  # Primary database - business data
-  - path: /rails/storage/production.sqlite3
-    replica:
-      type: abs                          # Azure Blob Storage
-      bucket: db-backups-production
-      endpoint: https://mystorageaccount.blob.core.windows.net
-      sync-interval: 1s                  # Near real-time replication
-
-  # Queue database - back up if pending jobs must survive a crash
-  - path: /rails/storage/production_queue.sqlite3
-    replica:
-      type: abs
-      bucket: db-backups-production
-      path: queue
-      sync-interval: 1s
-
-  # Cache and cable databases are intentionally omitted — transient/regenerable data.
-```
-
-### Backup Policy
-
-| Database | Back up? | Rationale |
-|----------|----------|-----------|
-| Primary | Always | Business data, needs full history |
-| Queue | Optional | Holds not-yet-run jobs; back up if losing pending work matters |
-| Cache | Skip | Ephemeral, regenerated on demand |
-| Cable | Skip | WebSocket pub/sub state, transient |
-
-Retention is now a single global `snapshot.retention` (v0.5), not per-database. If you need different retention windows per database, run separate Litestream configs/processes.
-
-### Recovery Commands
-
-**Cloudflare R2:**
-```bash
-# Restore to latest state
-litestream restore -o /rails/storage/production.sqlite3 \
-  s3://myapp-backups/production.sqlite3
-
-# Restore to specific point in time
-litestream restore -o /rails/storage/production.sqlite3 \
-  -timestamp "2024-01-15T10:30:00Z" \
-  s3://myapp-backups/production.sqlite3
-
-# List available snapshots
-litestream snapshots s3://myapp-backups/production.sqlite3
-```
-
-R2 restore commands require the same `LITESTREAM_*` env vars to be set.
-
-**Azure Blob Storage:**
-```bash
-# Restore to latest state
-litestream restore -o /rails/storage/production.sqlite3 \
-  abs://db-backups-production/production.sqlite3
-
-# Restore to specific point in time
-litestream restore -o /rails/storage/production.sqlite3 \
-  -timestamp "2024-01-15T10:30:00Z" \
-  abs://db-backups-production/production.sqlite3
-
-# List available snapshots
-litestream snapshots abs://db-backups-production/production.sqlite3
-```
-
-### Kamal Integration
-
-Litestream runs as a Kamal accessory, sharing the storage volume with the Rails app:
-
-```yaml
-# config/deploy.yml
-accessories:
-  litestream:
-    image: litestream/litestream:0.5
-    host: app-server
-    cmd: replicate
-    files:
-      - config/litestream.yml:/etc/litestream.yml
-    volumes:
-      - "app_storage:/rails/storage"    # Same volume as Rails app
-    env:
-      secret:
-        # For R2:
-        - LITESTREAM_ACCESS_KEY_ID
-        - LITESTREAM_SECRET_ACCESS_KEY
-        - LITESTREAM_REPLICA_BUCKET
-        - LITESTREAM_REPLICA_ENDPOINT
-        # For Azure:
-        # - STORAGE_ACCOUNT_NAME
-        # - STORAGE_ACCOUNT_KEY
-```
-
-`kamal deploy` does not start accessories. Boot it separately:
-
-```bash
-kamal accessory boot litestream        # First time
-kamal accessory reboot litestream      # After config changes
-kamal accessory logs litestream -f     # Tail logs
-```
-
-## Cloud-Init: VM Provisioning
-
-### What is Cloud-Init?
-
-Cloud-init is the industry standard for VM initialization. It runs once when a VM is first created and handles:
-- Package installation
-- User creation
-- Service configuration
-- Firewall setup
-
-### Example Cloud-Init Script
+Cloud-init runs once at first boot: install Docker for Kamal, create a non-root
+`deploy` user in the docker group, start the tunnel daemon, join the VPN, and
+close the firewall to everything except VPN traffic. HTTP never needs an open
+port because it arrives through the tunnel.
 
 ```yaml
 #cloud-config
 package_update: true
 package_upgrade: true
 
-packages:
-  - docker.io
-  - docker-compose
-  - curl
-  - wget
-  - git
-  - jq
-  - htop
-  - ufw
+packages: [docker.io, docker-compose, curl, git, jq, ufw]
 
 users:
   - name: deploy
@@ -459,7 +206,6 @@ users:
       - ${ssh_public_key}
 
 write_files:
-  # Tunnel daemon service
   - path: /etc/systemd/system/cloudflared.service
     content: |
       [Unit]
@@ -478,105 +224,23 @@ write_files:
       WantedBy=multi-user.target
 
 runcmd:
-  # Install tunnel daemon (Cloudflare example)
   - curl -fsSL https://pkg.cloudflare.com/cloudflare-main.gpg | gpg --dearmor -o /usr/share/keyrings/cloudflare.gpg
   - echo "deb [signed-by=/usr/share/keyrings/cloudflare.gpg] https://pkg.cloudflare.com/cloudflared $(lsb_release -cs) main" > /etc/apt/sources.list.d/cloudflared.list
   - apt-get update && apt-get install -y cloudflared
   - useradd -r -s /usr/sbin/nologin cloudflared
-  - systemctl enable cloudflared
-  - systemctl start cloudflared
+  - systemctl enable --now cloudflared
 
-  # Install VPN for SSH access (Tailscale example)
   - curl -fsSL https://tailscale.com/install.sh | sh
   - tailscale up --authkey=${tailscale_auth_key} --ssh
 
-  # Configure firewall - deny all except VPN
   - ufw default deny incoming
   - ufw default allow outgoing
   - ufw allow 41641/udp    # VPN control traffic
-  - ufw allow 3478/udp     # STUN (NAT traversal)
+  - ufw allow 3478/udp     # STUN, NAT traversal
   - ufw --force enable
-
-  # Completion logging
-  - echo "Cloud-init complete at $(date)" >> /var/log/cloud-init-complete.log
 ```
 
-### Key Components
-
-**1. Docker Installation:**
-```yaml
-packages:
-  - docker.io
-  - docker-compose
-```
-Kamal requires Docker on the target server.
-
-**2. Deploy User:**
-```yaml
-users:
-  - name: deploy
-    groups: [sudo, docker]
-    ssh_authorized_keys:
-      - ${ssh_public_key}
-```
-Non-root user for Kamal deployments with Docker access.
-
-**3. Zero Trust Tunnel:**
-The tunnel daemon (cloudflared, Tailscale, etc.) creates an outbound connection to the edge network, allowing HTTP traffic without exposing ports.
-
-**4. VPN for SSH:**
-Tailscale or WireGuard provides secure SSH access for deployments without opening SSH to the public internet.
-
-**5. Firewall:**
-```yaml
-- ufw default deny incoming
-- ufw allow 41641/udp    # VPN only
-```
-Only VPN traffic allowed inbound. HTTP traffic arrives through the tunnel.
-
-## Zero Trust Networking
-
-### The Problem with Traditional Deployment
-
-```
-Traditional:
-┌──────────────┐     ┌───────────────┐
-│   Internet   │────▶│ VM (public IP) │
-│              │     │ Port 22 (SSH)  │
-│              │     │ Port 80 (HTTP) │
-│              │     │ Port 443 (HTTPS)│
-└──────────────┘     └───────────────┘
-
-Vulnerabilities:
-- SSH brute force attacks
-- DDoS on public IP
-- SSL certificate management complexity
-```
-
-### Zero Trust Architecture
-
-```
-Zero Trust:
-┌──────────────┐     ┌───────────────┐     ┌───────────────┐
-│   Internet   │────▶│ Edge (CDN)    │────▶│ VM (no public │
-│              │     │ SSL termination│     │ IP, outbound  │
-│              │     │ DDoS protection│     │ tunnel only)  │
-└──────────────┘     └───────────────┘     └───────────────┘
-                                                   │
-                                                   ▼
-                     ┌───────────────┐     ┌───────────────┐
-                     │ CI/CD Runner  │────▶│ VM via VPN    │
-                     │ (deployment)  │     │ (SSH access)  │
-                     └───────────────┘     └───────────────┘
-
-Benefits:
-- No public IP = no direct attacks
-- Edge handles SSL, DDoS, caching
-- SSH only via authenticated VPN
-- Audit trail for all access
-```
-
-### Tunnel Configuration (Cloudflare Example)
+## Tunnel and ACME
 
 ```hcl
 resource "cloudflare_zero_trust_tunnel_cloudflared" "app" {
@@ -598,18 +262,13 @@ resource "cloudflare_zero_trust_tunnel_cloudflared_config" "app" {
       {
         hostname = "app.example.com"
         service  = "https://localhost:443"
-        origin_request = {
-          origin_server_name = "app.example.com"
-        }
+        origin_request = { origin_server_name = "app.example.com" }
       },
-      {
-        service = "http_status:404"
-      },
+      { service = "http_status:404" },
     ]
   }
 }
 
-# DNS record pointing to tunnel
 resource "cloudflare_dns_record" "app" {
   zone_id = var.cloudflare_zone_id
   name    = "app.example.com"
@@ -619,29 +278,20 @@ resource "cloudflare_dns_record" "app" {
   proxied = true
 }
 
-# Retrieve the tunnel token for the cloudflared daemon
 data "cloudflare_zero_trust_tunnel_cloudflared_token" "app" {
   account_id = var.cloudflare_account_id
   tunnel_id  = cloudflare_zero_trust_tunnel_cloudflared.app.id
 }
-
-output "tunnel_token" {
-  value     = data.cloudflare_zero_trust_tunnel_cloudflared_token.app.token
-  sensitive = true
-}
 ```
 
-### ACME/Let's Encrypt Passthrough
+Combining strict SSL, a tunnel, and Workers means HTTP-01 challenges need three
+layers configured together — any one alone fails:
 
-With a Zero Trust tunnel + strict SSL + Workers, Let's Encrypt HTTP-01 challenges require **three coordinated layers**:
-
-| Layer | Resource | Setting | Purpose |
-|-------|----------|---------|---------|
-| **Tunnel** | `cloudflare_zero_trust_tunnel_cloudflared_config` | `service = "http://localhost:80"` for ACME path | Route to HTTP port |
-| **Ruleset** | `cloudflare_ruleset` (phase: `http_config_settings`) | `ssl = "flexible"` for ACME path | Allow HTTP-to-origin |
-| **Worker** | `cloudflare_workers_route` | No script for ACME path | Bypass worker |
-
-**Layer 2 — SSL ruleset:**
+| Layer   | Where                                            | Setting                              |
+|---------|--------------------------------------------------|--------------------------------------|
+| Tunnel  | tunnel config ingress                            | `service = "http://localhost:80"` for the ACME path |
+| Ruleset | `cloudflare_ruleset`, `http_config_settings`     | `ssl = "flexible"` for the ACME path |
+| Worker  | `cloudflare_workers_route`                       | route with no script, so it bypasses |
 
 ```hcl
 resource "cloudflare_ruleset" "acme_ssl_bypass" {
@@ -649,45 +299,25 @@ resource "cloudflare_ruleset" "acme_ssl_bypass" {
   name    = "ACME Challenge SSL Configuration"
   kind    = "zone"
   phase   = "http_config_settings"
-  rules = [
-    {
-      action = "set_config"
-      action_parameters = {
-        ssl = "flexible"
-      }
-      expression  = "(http.host eq \"app.example.com\" and starts_with(http.request.uri.path, \"/.well-known/acme-challenge/\"))"
-      description = "Downgrade SSL for ACME challenges"
-      enabled     = true
-    },
-  ]
+  rules = [{
+    action            = "set_config"
+    action_parameters = { ssl = "flexible" }
+    expression        = "(http.host eq \"app.example.com\" and starts_with(http.request.uri.path, \"/.well-known/acme-challenge/\"))"
+    enabled           = true
+  }]
 }
-```
 
-**Layer 3 — Worker bypass:**
-
-```hcl
-# ACME bypass — more specific pattern, no script = bypass Worker
+# No script = route disabled = falls through to the origin
 resource "cloudflare_workers_route" "acme_bypass" {
   zone_id = var.cloudflare_zone_id
   pattern = "app.example.com/.well-known/acme-challenge/*"
-  # No script specified = route disabled, falls through to origin
 }
 ```
 
-### R2 Bucket for Storage
+## CI/CD
 
-```hcl
-resource "cloudflare_r2_bucket" "uploads" {
-  account_id = var.cloudflare_account_id
-  name       = "myapp-uploads"
-}
-```
-
-R2 is S3-compatible — use the `aws-sdk-s3` gem with Active Storage's S3 service adapter. Set `force_path_style: true` and `region: auto`.
-
-## CI/CD Pipeline
-
-### GitHub Actions Workflow
+Scan, lint, and test on every PR; build and deploy only from main. The deploy
+job joins the VPN before it can reach the server at all.
 
 ```yaml
 # .github/workflows/deploy.yml
@@ -695,72 +325,56 @@ name: CI/CD
 
 on:
   pull_request:
-    paths:
-      - 'app/**'
-      - '.github/workflows/deploy.yml'
   push:
     branches: [main]
-    paths:
-      - 'app/**'
 
 jobs:
-  # Security scans
   scan:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: ruby/setup-ruby@v1
-        with:
-          bundler-cache: true
+        with: { bundler-cache: true }
       - run: bin/brakeman --no-pager --exit-on-warn
       - run: bin/bundler-audit
       - run: bin/importmap audit
 
-  # Linting
   lint:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: ruby/setup-ruby@v1
-        with:
-          bundler-cache: true
+        with: { bundler-cache: true }
       - run: bin/rubocop -f github
 
-  # Tests
   test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: ruby/setup-ruby@v1
-        with:
-          bundler-cache: true
+        with: { bundler-cache: true }
       - run: bin/rails db:test:prepare test
       - run: bin/rails test:system
         if: always()
       - uses: actions/upload-artifact@v4
         if: failure()
-        with:
-          name: screenshots
-          path: tmp/screenshots
+        with: { name: screenshots, path: tmp/screenshots }
 
-  # Build and push Docker image
   build:
     needs: [scan, lint, test]
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
-      contents: read     # Required for checkout (explicit permissions drop defaults)
-      packages: write    # Required for ghcr.io push
+      contents: read     # explicit permissions drop the defaults, so checkout needs this
+      packages: write    # ghcr.io push
     steps:
       - uses: actions/checkout@v4
       - uses: ruby/setup-ruby@v1
-        with:
-          bundler-cache: true
+        with: { bundler-cache: true }
       - run: bin/kamal build push
         env:
           KAMAL_REGISTRY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
 
-  # Deploy via VPN
   deploy:
     needs: [build]
     if: github.ref == 'refs/heads/main'
@@ -768,17 +382,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ruby/setup-ruby@v1
-        with:
-          bundler-cache: true
-
-      # Connect to VPN for SSH access
+        with: { bundler-cache: true }
       - uses: tailscale/github-action@v2
         with:
           oauth-client-id: ${{ secrets.TAILSCALE_OAUTH_CLIENT_ID }}
           oauth-secret: ${{ secrets.TAILSCALE_OAUTH_CLIENT_SECRET }}
           tags: tag:ci
-
-      # Deploy
       - run: |
           if bin/kamal proxy status 2>/dev/null; then
             bin/kamal deploy --skip-push
@@ -788,144 +397,68 @@ jobs:
         env:
           RAILS_MASTER_KEY: ${{ secrets.RAILS_MASTER_KEY }}
           KAMAL_REGISTRY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
-          STORAGE_ACCOUNT_NAME: ${{ secrets.STORAGE_ACCOUNT_NAME }}
-          STORAGE_ACCOUNT_KEY: ${{ secrets.STORAGE_ACCOUNT_KEY }}
-
-      # Verify deployment
-      - run: |
-          sleep 10
-          bin/kamal proxy status
 ```
 
-### Required Secrets
+`RAILS_MASTER_KEY` is needed at deploy and runtime, not to build the image.
+`GITHUB_TOKEN` is provided automatically but needs `packages: write`. The
+Tailscale OAuth pair and the Litestream storage credentials come from their
+respective consoles.
 
-| Secret | Purpose | Source |
-|--------|---------|--------|
-| `GITHUB_TOKEN` | Container registry auth (build job) | Auto-provided by GitHub |
-| `RAILS_MASTER_KEY` | Rails credentials encryption (deploy job) | `config/credentials.key` |
-| `TAILSCALE_OAUTH_CLIENT_ID` | VPN authentication | Tailscale admin console |
-| `TAILSCALE_OAUTH_CLIENT_SECRET` | VPN authentication | Tailscale admin console |
-| `STORAGE_ACCOUNT_NAME` | Litestream backup destination | Cloud provider |
-| `STORAGE_ACCOUNT_KEY` | Litestream backup auth | Cloud provider |
-
-**Note:** `RAILS_MASTER_KEY` is only needed at deploy/runtime, not for image builds. `GITHUB_TOKEN` is auto-provided and needs `packages: write` permission.
-
-### Deployment Flow
-
-1. **PR opened**: Run security scans, linting, tests
-2. **PR merged to main**: All checks pass → build image → push to registry
-3. **Deploy**: Connect VPN → SSH to server → run `kamal deploy`
-4. **Verify**: Check containers are running via `kamal proxy status`
-
-## ActiveStorage with Cloud Storage
-
-### Configuration
+## Active Storage
 
 ```yaml
 # config/storage.yml
-local:
-  service: Disk
-  root: <%= Rails.root.join("storage/files") %>
-
-# Cloudflare R2 (S3-compatible, uses aws-sdk-s3 gem)
 r2:
-  service: S3
+  service: S3                      # R2 is S3-compatible; needs the aws-sdk-s3 gem
   access_key_id: <%= Rails.application.credentials.dig(:r2, :access_key_id) %>
   secret_access_key: <%= Rails.application.credentials.dig(:r2, :secret_access_key) %>
   endpoint: https://<account_id>.r2.cloudflarestorage.com
   region: auto
   bucket: myapp-uploads
   force_path_style: true
-
-# Azure Blob Storage:
-# production:
-#   service: AzureStorage
-#   storage_account_name: <%= ENV['STORAGE_ACCOUNT_NAME'] %>
-#   storage_access_key: <%= ENV['STORAGE_ACCESS_KEY'] %>
-#   container: attachments-<%= Rails.env %>
 ```
 
-### Environment Configuration
+Direct uploads need CORS on the bucket — allow the app origin for
+`GET/HEAD/PUT/POST/OPTIONS` and expose `ETag`.
 
-```ruby
-# config/environments/production.rb
-config.active_storage.service = :r2
-```
-
-### CORS Configuration
-
-For direct uploads, configure CORS on your storage bucket:
-
-```json
-{
-  "corsRules": [
-    {
-      "allowedOrigins": ["https://app.example.com"],
-      "allowedMethods": ["GET", "HEAD", "PUT", "POST", "OPTIONS"],
-      "allowedHeaders": ["*"],
-      "exposedHeaders": ["ETag"],
-      "maxAgeInSeconds": 3600
-    }
-  ]
-}
-```
-
-## Dockerfile Best Practices
-
-### Multi-Stage Build
+## Dockerfile
 
 ```dockerfile
 # syntax=docker/dockerfile:1
 ARG RUBY_VERSION=3.4.1
 
-# Base image
 FROM ruby:$RUBY_VERSION-slim AS base
 WORKDIR /rails
 ENV RAILS_ENV=production \
     BUNDLE_DEPLOYMENT=1 \
     BUNDLE_PATH=/usr/local/bundle
 
-# Build stage
 FROM base AS build
-
-# Install build dependencies
 RUN apt-get update -qq && \
     apt-get install --no-install-recommends -y \
     build-essential git pkg-config libssl-dev libyaml-dev
 
-# Install gems
 COPY Gemfile Gemfile.lock ./
-RUN bundle install && \
-    rm -rf ~/.bundle/ "${BUNDLE_PATH}"/ruby/*/cache
+RUN bundle install && rm -rf ~/.bundle/ "${BUNDLE_PATH}"/ruby/*/cache
 
-# Copy application code
 COPY . .
-
-# Precompile bootsnap and assets
 RUN bundle exec bootsnap precompile app/ lib/
 RUN SECRET_KEY_BASE_DUMMY=1 ./bin/rails assets:precompile
 
-# Final stage
 FROM base
-
-# Install runtime dependencies only
 RUN apt-get update -qq && \
     apt-get install --no-install-recommends -y \
     curl libjemalloc2 libvips sqlite3 poppler-utils && \
     rm -rf /var/lib/apt/lists /var/cache/apt/archives
 
-# Copy built artifacts
 COPY --from=build "${BUNDLE_PATH}" "${BUNDLE_PATH}"
 COPY --from=build /rails /rails
 
-# Create non-root user
 RUN groupadd --system --gid 1000 rails && \
     useradd rails --uid 1000 --gid 1000 --create-home --shell /bin/bash && \
     chown -R rails:rails db log storage tmp
-
 USER 1000:1000
 
-# Enable jemalloc for better memory performance
 ENV LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so.2
 
 ENTRYPOINT ["/rails/bin/docker-entrypoint"]
@@ -933,16 +466,18 @@ EXPOSE 80
 CMD ["./bin/thrust", "./bin/rails", "server"]
 ```
 
-### Docker Entrypoint
+`bin/thrust` wraps Puma with Thruster (`gem "thruster", require: false`), which
+adds X-Sendfile, asset caching, compression, and HTTP/2.
+
+The entrypoint migrates only when actually booting the server, so `kamal
+console` and one-off commands don't run migrations:
 
 ```bash
 #!/bin/bash
 set -e
 
-# Enable jemalloc
 export LD_PRELOAD=$(find /usr/lib -name 'libjemalloc.so.2' 2>/dev/null | head -1)
 
-# Auto-migrate when starting Rails server
 if [ "${@: -2:1}" == "./bin/rails" ] && [ "${@: -1:1}" == "server" ]; then
   ./bin/rails db:prepare
 fi
@@ -950,162 +485,65 @@ fi
 exec "$@"
 ```
 
-### Key Optimizations
+## SSL behind a proxy
 
-1. **Multi-stage build**: Separates build dependencies from runtime
-2. **jemalloc**: Better memory allocation, reduces fragmentation
-3. **Non-root user**: Security best practice
-4. **Bootsnap precompile**: Faster boot times
-5. **Asset precompilation**: Done at build time, not runtime
-
-## Thruster: HTTP Layer
-
-### What is Thruster?
-
-Thruster is a lightweight HTTP layer that sits in front of Puma:
-- **X-Sendfile**: Efficient file serving
-- **Asset caching**: Long cache headers for fingerprinted assets
-- **Compression**: gzip/brotli compression
-- **HTTP/2**: Multiplexed connections
-
-### Configuration
+With Cloudflare and kamal-proxy both in front of the app, set **both**:
 
 ```ruby
-# Gemfile
-gem "thruster", require: false
+config.assume_ssl = true
+config.force_ssl = true
 ```
 
-```dockerfile
-# Dockerfile
-CMD ["./bin/thrust", "./bin/rails", "server"]
-```
+`assume_ssl` marks the request as HTTPS before `force_ssl` inspects it. With
+only `force_ssl`, the proxy's plain-HTTP hop to the app triggers a redirect that
+the proxy re-issues, producing a loop.
 
-Thruster automatically:
-- Serves static assets with long cache headers
-- Compresses responses
-- Handles keep-alive connections efficiently
-
-## Security Considerations
-
-### Network Security
-
-1. **No public IP**: VM only accessible via tunnel and VPN
-2. **Firewall**: UFW denies all except VPN traffic
-3. **Edge protection**: DDoS mitigation, WAF at CDN layer
-4. **SSH**: Only via authenticated VPN
-
-### Application Security
-
-1. **SSL everywhere**: Strict SSL mode with HSTS. Enable both `config.assume_ssl = true` and `config.force_ssl = true` in production when behind an SSL-terminating proxy (Cloudflare + kamal-proxy). `assume_ssl` marks requests as HTTPS before `force_ssl` checks, preventing redirect loops.
-2. **Secrets management**: Environment variables, never in code
-3. **Security scanning**: Brakeman, bundler-audit, importmap audit in CI
-4. **Regular updates**: Dependabot for dependency updates
-
-### Database Security
-
-1. **Encryption at rest**: Cloud storage encryption
-2. **Continuous backup**: Litestream replication
-3. **Point-in-time recovery**: Restore to any moment
-4. **No external access**: Database is local file, not network accessible
-
-## Cost Optimization
-
-### Infrastructure Costs
-
-| Component | Traditional | SQLite Stack |
-|-----------|------------|--------------|
-| Database | $50-200/mo (managed PostgreSQL) | $0 (SQLite on VM) |
-| Redis | $15-50/mo (managed Redis) | $0 (Solid Cache/Queue/Cable) |
-| Backup storage | Included | $5-10/mo (object storage) |
-| VM | $20-100/mo | $20-100/mo |
-| **Total** | **$85-350/mo** | **$25-110/mo** |
-
-### Why SQLite is Cheaper
-
-1. No managed database service fees
-2. No Redis hosting costs
-3. Object storage is cheap ($0.02/GB/month)
-4. Single VM handles everything
-
-## Monitoring and Observability
-
-### Health Checks
+## Health checks and logging
 
 ```ruby
-# config/routes.rb
-get '/up', to: 'health#show'
-
-# app/controllers/health_controller.rb
 class HealthController < ApplicationController
   skip_before_action :authenticate_user!
 
   def show
-    render json: {
-      status: 'ok',
-      database: database_connected?,
-      queue: queue_healthy?,
-      cache: cache_healthy?
-    }
+    render json: { status: "ok", database: database_connected?,
+                   queue: queue_healthy?, cache: cache_healthy? }
   end
 
   private
+    def database_connected?
+      ApplicationRecord.connection.active?
+    rescue
+      false
+    end
 
-  def database_connected?
-    ApplicationRecord.connection.active?
-  rescue
-    false
-  end
+    def queue_healthy?
+      SolidQueue::Process.where("last_heartbeat_at > ?", 5.minutes.ago).exists?
+    rescue
+      false
+    end
 
-  def queue_healthy?
-    SolidQueue::Process.where('last_heartbeat_at > ?', 5.minutes.ago).exists?
-  rescue
-    false
-  end
-
-  def cache_healthy?
-    Rails.cache.write('health_check', Time.current)
-    Rails.cache.read('health_check').present?
-  rescue
-    false
-  end
+    def cache_healthy?
+      Rails.cache.write("health_check", Time.current)
+      Rails.cache.read("health_check").present?
+    rescue
+      false
+    end
 end
 ```
 
-### Deployment Revision
+```ruby
+config.log_level = ENV.fetch("RAILS_LOG_LEVEL", "info").to_sym
+config.log_tags = [:request_id]   # trace a request across log lines
+```
 
-Use `Rails.app.revision` (from `REVISION` file or git SHA) for error reporting and cache keys:
+Tag error reports with the deployed revision so a stack trace maps to a commit:
 
 ```ruby
 Sentry.set_context("app", { revision: Rails.app.revision })
 ```
 
-### Logging
-
-```ruby
-# config/environments/production.rb
-config.log_level = ENV.fetch('RAILS_LOG_LEVEL', 'info').to_sym
-config.rails_semantic_logger.format = :json  # If using semantic_logger
-config.log_tags = [:request_id]              # Trace requests across logs
-```
-
-### Kamal Log Access
-
-```bash
-# View all logs
-bin/kamal logs -f
-
-# View specific service
-bin/kamal logs -f -r job
-
-# View accessory logs
-bin/kamal accessory logs litestream
-```
-
 ## References
 
-- [Kamal Documentation](https://kamal-deploy.org/)
-- [Litestream Documentation](https://litestream.io/)
-- [Cloudflare Zero Trust](https://developers.cloudflare.com/cloudflare-one/)
-- [Tailscale Documentation](https://tailscale.com/kb/)
-- [Rails 8 Solid Queue](https://github.com/rails/solid_queue)
-- [Thruster](https://github.com/basecamp/thruster)
+- [Kamal](https://kamal-deploy.org/) · [Thruster](https://github.com/basecamp/thruster)
+- [Litestream](https://litestream.io/)
+- [Cloudflare Zero Trust](https://developers.cloudflare.com/cloudflare-one/) · [Tailscale](https://tailscale.com/kb/)

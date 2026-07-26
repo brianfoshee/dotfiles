@@ -16,6 +16,12 @@ this skill. All Terraform targets the `cloudflare/cloudflare` provider v5.
 
 Three-step deployment: resource → version → deployment, plus route binding.
 
+The `cloudflare_worker` / `cloudflare_worker_version` /
+`cloudflare_workers_deployment` trio is still marked **beta** in the provider,
+which recommends it for finer control over `cloudflare_workers_script`. This
+skill uses the trio for the app proxy and `workers_script` for the site and
+email workers, so both appear across these docs.
+
 ```hcl
 # 1. Worker resource (metadata and settings)
 resource "cloudflare_worker" "app_proxy" {

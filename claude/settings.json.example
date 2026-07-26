@@ -14,6 +14,13 @@
       "Read(**/*.tfvars)",
       "Read(**/credentials.yml.enc)",
       "Read(**/master.key)",
+      "Bash(bin/rails credentials:*)",
+      "Bash(./bin/rails credentials:*)",
+      "Bash(rails credentials:*)",
+      "Bash(bundle exec rails credentials:*)",
+      "Bash(bin/rails encrypted:*)",
+      "Bash(rails encrypted:*)",
+      "Bash(bundle exec rails encrypted:*)",
       "Bash(git push:*)",
       "Bash(rm -rf /*)",
       "Bash(rm -rf ~/*)"

@@ -14,8 +14,8 @@ Terraform provider v5.
 **Static site + email** — two Workers and no origin server. A site Worker serves
 static HTML/CSS from `dist/` through Terraform's assets binding; an email Worker
 handles inbound mail via Email Routing, storing raw messages in R2 (cheap and
-durable) alongside queryable metadata in D1, and sending auto-replies. Backed by a D1 database, an R2 bucket,
-email routing, and zone settings.
+durable) alongside queryable metadata in D1, and sending auto-replies. Backed by
+a D1 database, an R2 bucket, email routing, and zone settings.
 
 **App behind a Zero Trust tunnel** — traffic flows Client → Cloudflare edge →
 Worker (optional) → tunnel → origin server, so the origin needs no public IP. An
@@ -52,15 +52,22 @@ Set via `cloudflare_zone_setting` resources, plus `cloudflare_zone_dnssec`:
 | `ssl` | `strict` | Requires a valid cert on the origin |
 | `security_header` | HSTS object | `max_age` 31536000, include_subdomains, preload, nosniff |
 | `automatic_https_rewrites` | `off` | Let the app handle its own asset URLs |
-| `websockets` | `on` | For ActionCable and friends — **cannot be destroyed via Terraform once created**; disable it from the dashboard |
+| `websockets` | `on` | For ActionCable and friends |
+
+`cloudflare_zone_setting`'s destroy is a no-op for every `setting_id` — it drops
+the resource from state without calling Cloudflare, so the setting stays on.
+Turn one off from the dashboard, or by setting its value explicitly rather than
+removing the resource.
 
 ### DNS
 
 Point an app subdomain at a tunnel with a proxied CNAME to
 `${tunnel.id}.cfargotunnel.com`.
 
-Domains served entirely by Workers need no DNS records at all — a Worker route
-bound to a domain pattern makes Cloudflare handle routing.
+Every proxied hostname needs a DNS record, Workers included — a
+`cloudflare_workers_route` alone won't route traffic. What lets a
+Worker-only domain skip writing one is `cloudflare_workers_custom_domain`,
+which provisions the record itself.
 
 A `www` → naked redirect ruleset does need a proxied record for `www`, so
 Cloudflare has something to intercept. Point it at the RFC 5737 documentation IP;
@@ -121,6 +128,6 @@ on the origin with the tunnel token and verify connectivity and cert issuance.
 - **Separate workers per concern.** Site, email, and app proxy have different bindings and deploy independently.
 - **esbuild for the email worker only.** It's the one with a dependency (`mimetext`); the static workers have none.
 - **RFC 3834 auto-reply detection.** Check the `Auto-Submitted` header plus common anti-loop heuristics before replying.
-- **Workers.dev disabled.** Every worker sets `subdomain.enabled` and `subdomain.previews_enabled` to false so nothing is reachable at a workers.dev URL.
+- **Workers.dev disabled.** Nothing should be reachable at a workers.dev URL. `cloudflare_worker` takes `subdomain.enabled` and `subdomain.previews_enabled` directly; `cloudflare_workers_script` has no such attribute and needs a separate `cloudflare_workers_script_subdomain` resource.
 - **Three-layer ACME passthrough.** Tunnel ingress, SSL ruleset, and Worker bypass are all required together when combining strict SSL, tunnels, and Workers.
 - **`network: host` for the tunnel accessory.** cloudflared must use host networking to reach services on localhost.

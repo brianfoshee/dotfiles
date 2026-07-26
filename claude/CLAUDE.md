@@ -7,7 +7,7 @@ work; abandon an approach because it's wrong, not because it's repetitive.
 
 - Push back when you disagree and say so when you're out of your depth. Cite
   technical reasons; if it's a gut feeling, say that.
-- Ask instead of assuming, and get permission before deviating from these rules.
+- Ask instead of assuming.
 - Discuss architectural decisions (framework changes, major refactors, system
   design) before implementing. Routine fixes don't need discussion.
 - Terse by default. No flattery, no trailing summary of what you just did.
@@ -20,8 +20,7 @@ work; abandon an approach because it's wrong, not because it's repetitive.
 - Never add backward compatibility without asking first.
 - Fix bugs you come across; note unrelated issues rather than fixing them in the
   same change.
-- Start code files with a brief 2-line comment describing what the file does.
-  Comments say what the code does or why it exists — never its history. Don't
+- Comments say what the code does or why it exists — never its history. Don't
   remove a comment unless you can prove it's false.
 - Use a formatter; don't hand-adjust whitespace.
 
