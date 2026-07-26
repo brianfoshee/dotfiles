@@ -72,9 +72,8 @@ mobile-first with semantic HTML and ARIA attributes. Preview with the
 
 ## Brand and social icons
 
-Heroicons has no brand logos; Tailwind Plus footers use
-[Simple Icons](https://simpleicons.org) instead. Every icon is a single `<path>`
-on a `viewBox="0 0 24 24"`, fetchable at
+Brand SVGs come from [Simple Icons](https://simpleicons.org). Every icon is a
+single `<path>` on a `viewBox="0 0 24 24"`, fetchable at
 `https://raw.githubusercontent.com/simple-icons/simple-icons/develop/icons/{slug}.svg`.
 Extract the path and wrap it:
 
