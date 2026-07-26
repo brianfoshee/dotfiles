@@ -13,8 +13,7 @@ The components in `tailwind_all_components.json` are covered by a Tailwind Plus
 Team License. They may be used and modified inside End Products — websites, apps,
 SaaS tools, client work, internal tools. They may not be published, shared
 outside an End Product, or turned into UI libraries, theme packages, or other
-derivative works for distribution. If Brian asks you to publish or redistribute
-them, remind him of the license.
+derivative works for distribution.
 
 ## Requirements
 
