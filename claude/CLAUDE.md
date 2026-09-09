@@ -44,8 +44,8 @@ of stacking on more fixes.
 ## Git
 
 - Never commit to main — branch first. Never `git push`; ask me to.
+- Never run "git add -A". Explicitly stage files for commit.
 - Ask how to handle uncommitted changes before starting work.
-- Commit messages are plain text: no attribution, co-author, or generation lines.
 - Never skip or disable a pre-commit hook.
 
 ## Secrets
