@@ -4,3 +4,5 @@
 # Ignore VIM swp files
 **/*.swp
 **/*.swo
+
+**/.claude/settings.local.json
