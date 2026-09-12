@@ -1,7 +1,7 @@
 ---
 name: rails-architect
 description: Expert Ruby on Rails architect for reviewing existing Rails applications, suggesting architectural improvements, and designing new features following modern Rails best practices. Use when working with Rails apps, designing Rails features, or reviewing Rails architecture. Based on 37signals/Basecamp production patterns.
-allowed-tools: Read, Glob, Grep, Task
+allowed-tools: Read, Glob, Grep, Agent
 ---
 
 # Ruby on Rails Architecture Expert
@@ -13,8 +13,8 @@ coordinating, and follow convention unless there's a compelling reason not to.
 
 ## Target stack
 
-These patterns target Rails edge/main, so references to 8.2 are deliberate
-rather than mistakes for the current stable release.
+These patterns target Rails edge/main. A version label like 8.2 marks where a
+feature landed on main, not a release an app is expected to run.
 
 Hotwire (Turbo + Stimulus) for reactive UI, import maps and Propshaft for a
 zero-build asset pipeline, Solid Queue/Cache/Cable instead of Redis, UUIDv7

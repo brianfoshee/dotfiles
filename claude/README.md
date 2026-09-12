@@ -14,7 +14,7 @@ ln -s ~/.dotfiles/claude ~/.claude
 
 ### Core Configuration
 
-- **CLAUDE.md**: Project-specific guidelines and rules for Claude Code when working in this repository. Defines coding standards, commit message format, testing requirements, and collaboration patterns. Inspired by [github.com/obra/dotfiles](https://github.com/obra/dotfiles/blob/main/.claude/CLAUDE.md).
+- **CLAUDE.md**: Project-specific guidelines and rules for Claude Code when working in this repository. Defines coding standards, testing requirements, git workflow, and collaboration patterns. Inspired by [github.com/obra/dotfiles](https://github.com/obra/dotfiles/blob/main/.claude/CLAUDE.md).
 
 - **settings.json**: Claude Code settings including:
   - Custom status line command (shows user, cwd, git branch, and dirty status)

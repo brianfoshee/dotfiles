@@ -67,7 +67,7 @@ WHERE embedding MATCH '[...]' ORDER BY distance LIMIT 10;
 
 FTS5 is a virtual-table module compiled into most SQLite builds, with built-in BM25 ranking and external-content mode. Prefer it over an external search engine for single-server apps.
 
-**Rails has native migration support** (`create_virtual_table` / `drop_virtual_table`, PR #52354) and dumps the virtual table to `schema.rb` while excluding its shadow tables:
+**Rails has native migration support** (`create_virtual_table` / `drop_virtual_table`) and dumps the virtual table to `schema.rb` while excluding its shadow tables:
 
 ```ruby
 create_virtual_table "documents_fts", "fts5",

@@ -65,9 +65,8 @@ force one mode.
 
 ## Workflow
 
-Establish purpose, content, design preferences, and target devices first. Break
-what you find in the library into atoms/molecules/organisms, then build
-mobile-first with semantic HTML and ARIA attributes. Preview with the
+Establish purpose, content, design preferences, and target devices first, then
+build mobile-first with semantic HTML and ARIA attributes. Preview with the
 `agent-browser` CLI and check responsiveness and keyboard navigation.
 
 ## Brand and social icons
