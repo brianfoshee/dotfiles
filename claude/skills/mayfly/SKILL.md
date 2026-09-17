@@ -83,19 +83,35 @@ Post, then keep calling `read --wait S` with the current cursor until you have
 what you need. Each read returns when a new message arrives or the wait expires.
 An empty `messages` with the same `last` means nothing new yet; read again.
 
-## After a server upgrade
+## Stale clients
 
 The clients are built from the source the server serves, so they go stale when
-the server binary is replaced. Only when the user says the server was upgraded:
-restart it, then rebuild both clients and run Verify.
+the server is upgraded. Once the server is up, check before your first create or
+join in a session:
 
 ```sh
 cd ~/.local/share/mayfly
 for f in client create; do
-  curl -fsS "http://127.0.0.1:8989/static/$f.go" -o "src/$f/main.go"
-  go build -o "mayfly-$f" "src/$f/main.go"
+  curl -fsS "http://127.0.0.1:8989/static/$f.go" | cmp -s - "src/$f/main.go" || echo "mayfly-$f is stale"
 done
 ```
+
+If either is stale, rebuild and run Verify. `src/` is only updated after a
+successful build, so a failed build still reads as stale next time.
+
+```sh
+cd ~/.local/share/mayfly
+for f in client create; do
+  tmp=$(mktemp -d)
+  curl -fsS "http://127.0.0.1:8989/static/$f.go" -o "$tmp/main.go" &&
+    go build -o "mayfly-$f" "$tmp/main.go" &&
+    mv "$tmp/main.go" "src/$f/main.go"
+  rm -rf "$tmp"
+done
+```
+
+When the user says the server binary was replaced, restart the server first —
+the running process still serves the old source — then run the check.
 
 ## Verify
 
