@@ -1,13 +1,16 @@
 #!/bin/bash
-# Claude Code status line: user ➜ [cwd:branch.] model·ctx%
+# Claude Code status line: user ➜ [cwd:branch.] model·ctx%·effort
 # Receives session JSON on stdin; the first line of stdout is displayed.
 # The branch styling (red branch, cyan "." when dirty) mirrors brianfoshee.zsh-theme.
 
-# used_percentage is null early in a session
-IFS=$'\t' read -r cwd model pct < <(jq -r '[
+# used_percentage is null early in a session; effort is absent for models
+# without effort support. effort stays last because read collapses empty
+# tab-separated fields.
+IFS=$'\t' read -r cwd model pct effort < <(jq -r '[
   .workspace.current_dir,
-  .model.display_name,
-  (.context_window.used_percentage // 0 | floor)
+  (.model.display_name | sub(" context\\)$"; ")")),
+  (.context_window.used_percentage // 0 | floor),
+  (.effort.level // "")
 ] | @tsv')
 
 branch=$(git -C "$cwd" --no-optional-locks symbolic-ref --short HEAD 2>/dev/null ||
@@ -24,3 +27,4 @@ pctcolor="0;32"
 [ "$pct" -ge 50 ] && pctcolor="0;33"
 [ "$pct" -ge 80 ] && pctcolor="0;31"
 printf "\033[1;34m] \033[0m%s\033[1;37m·\033[${pctcolor}m%s%%\033[0m" "$model" "$pct"
+[ -n "$effort" ] && printf "\033[1;37m·\033[0m%s" "$effort"
