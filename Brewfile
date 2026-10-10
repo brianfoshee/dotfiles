@@ -84,8 +84,6 @@ brew "pinentry-mac"
 brew "protobuf"
 # GNU Portable THreads
 brew "pth"
-# Interpreted, interactive, object-oriented programming language
-brew "python@3.9"
 # QR Code generation
 brew "qrencode"
 # Cross-platform application and UI framework
@@ -94,10 +92,10 @@ brew "qt"
 brew "rclone"
 # Persistent key-value database, with built-in net interface
 brew "redis"
+# Search tool like grep and The Silver Searcher
+brew "ripgrep"
 # Safe, concurrent, practical language
 brew "rust"
-# Code-search similar to ack
-brew "the_silver_searcher"
 # Terminal multiplexer
 brew "tmux"
 # Vi 'workalike' with many additional features
