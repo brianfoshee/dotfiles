@@ -353,6 +353,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ruby/setup-ruby@v1
         with: { bundler-cache: true }
+      - run: bin/rails herb:check
       - run: bin/rails db:test:prepare test
       - run: bin/rails test:system
         if: always()
@@ -404,6 +405,27 @@ jobs:
 Tailscale OAuth pair and the Litestream storage credentials come from their
 respective consoles.
 
+`herb:check` sits in the test job because it boots the app. The scan job's
+`bin/bundler-audit` covers every gem except Rails, whose advisories it can't see
+while the app runs main (see `docs/rails-8-modern-stack.md`). Dependabot's
+revision bumps are what deliver Rails security fixes:
+
+```yaml
+# .github/dependabot.yml
+version: 2
+updates:
+  - package-ecosystem: bundler
+    directory: "/"
+    schedule:
+      interval: daily
+    groups:
+      bundler:
+        patterns: ["*"]
+```
+
+With `gem "rails", github: "rails/rails", branch: "main"`, the daily grouped PR
+moves the locked revision forward; a `ref:` pin would never be bumped.
+
 ## Active Storage
 
 ```yaml
@@ -439,7 +461,8 @@ RUN apt-get update -qq && \
     build-essential git pkg-config libssl-dev libyaml-dev
 
 COPY Gemfile Gemfile.lock ./
-RUN bundle install && rm -rf ~/.bundle/ "${BUNDLE_PATH}"/ruby/*/cache
+RUN bundle install && \
+    rm -rf ~/.bundle/ "${BUNDLE_PATH}"/ruby/*/cache "${BUNDLE_PATH}"/ruby/*/bundler/gems/*/.git
 
 COPY . .
 RUN bundle exec bootsnap precompile app/ lib/
@@ -465,6 +488,10 @@ ENTRYPOINT ["/rails/bin/docker-entrypoint"]
 EXPOSE 80
 CMD ["./bin/thrust", "./bin/rails", "server"]
 ```
+
+The build stage needs `git` because Bundler clones rails/rails (and any other
+git gems) during `bundle install`; the `.git` directories of those checkouts are
+removed in the same layer so they don't reach the final image.
 
 `bin/thrust` wraps Puma with Thruster (`gem "thruster", require: false`), which
 adds X-Sendfile, asset caching, compression, and HTTP/2.

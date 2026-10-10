@@ -8,6 +8,7 @@ tag builders, and separate partials per display context instead of conditionals.
 - [Locals over instance variables](#locals-over-instance-variables)
 - [Semantic tag builders](#semantic-tag-builders)
 - [What belongs out of ERB](#what-belongs-out-of-erb)
+- [Herb-safe templates](#herb-safe-templates)
 - [Directory layout](#directory-layout)
 - [Display variants](#display-variants)
 - [Composition via yield](#composition-via-yield)
@@ -92,6 +93,51 @@ Move out when the view starts computing rather than displaying:
 
 Nesting more than a level or two of conditionals usually means a partial is
 waiting to be extracted, or the collection should have been filtered upstream.
+
+## Herb-safe templates
+
+Herb compiles `.html.erb` as one HTML-and-Ruby tree, so markup has to be
+well-formed in every branch, and `bin/rails herb:check` rejects `<%= %>` output
+in a tag's attribute list. `docs/rails-8-modern-stack.md` covers the engine.
+Three patterns cover what that rules out.
+
+**Boolean attributes** use control flow, not output:
+
+```erb
+<%# rejected: ERB output in attribute position %>
+<option value="<%= value %>" <%= "selected" if selected %>>
+
+<option value="<%= value %>" <% if selected %>selected<% end %>>
+```
+
+**Computed attributes** go through `tag.attributes`, which omits nil values and
+includes or omits boolean attributes by truthiness:
+
+```erb
+<label class="field-label" <%= tag.attributes(for: field_id) %>>
+
+<select <%= tag.attributes(id: id,
+                           "aria-invalid": ("true" if errors),
+                           "aria-describedby": (desc_id if help)) %>>
+```
+
+`tag.attributes` must be unconditional. `<%= tag.attributes(...) if x %>` is
+rejected as well; write `<% if x %><%= tag.attributes(...) %><% end %>`.
+
+**Conditional wrappers** capture the body once and choose the wrapper in Ruby,
+instead of opening a `<div>` in one `<% if %>` and closing it in another:
+
+```erb
+<% body = capture do %>
+  <%= render "cards/content", card: card %>
+<% end %>
+
+<%= wrap ? tag.div(body, class: wrapper_class) : body %>
+```
+
+Run `bin/rails herb:check` in `bin/ci`; it compiles every HTML+ERB template,
+lists each one that fails, and exits non-zero. `docs/anti-patterns.md` has the
+attribute-string bug these patterns replace.
 
 ## Directory layout
 

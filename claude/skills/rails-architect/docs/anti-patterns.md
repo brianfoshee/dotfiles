@@ -11,6 +11,8 @@ Reference guide for identifying and fixing common Rails anti-patterns during arc
 - [5. Over-Engineering](#5-over-engineering)
 - [6. Missing Transaction Wrapping](#6-missing-transaction-wrapping)
 - [7. Testing Mocked Behavior](#7-testing-mocked-behavior)
+- [8. Hand-Built Attribute Strings](#8-hand-built-attribute-strings)
+- [9. ERB Output in Attribute Position](#9-erb-output-in-attribute-position)
 
 ## 1. Service Objects Everywhere
 
@@ -137,3 +139,36 @@ test "closes card" do
   assert card.events.closed.exists?
 end
 ```
+
+## 8. Hand-Built Attribute Strings
+
+**Problem**: `<%= %>` HTML-escapes its output, so an attribute assembled as a
+Ruby string renders with its quotes escaped. The browser reads
+`id=&quot;email&quot;` as an `id` whose value contains literal quote
+characters, and every `<label for>` pointing at it silently stops matching.
+
+```erb
+<%# BAD — renders id=&quot;email&quot; %>
+<input type="email" <%= "id=\"#{id}\"" if id %>>
+
+<%# GOOD — nil values are omitted %>
+<input type="email" <%= tag.attributes(id: id) %>>
+```
+
+## 9. ERB Output in Attribute Position
+
+**Problem**: `<%= %>` inside a tag's attribute list or an attribute name lets
+Ruby emit arbitrary markup into the tag. Herb's security validator rejects it,
+so `bin/rails herb:check` fails the build.
+
+```erb
+<%# BAD %>
+<button <%= "disabled" if locked %>>Save</button>
+
+<%# GOOD %>
+<button <% if locked %>disabled<% end %>>Save</button>
+```
+
+The one form allowed in attribute position is an unconditional
+`<%= tag.attributes(...) %>`. See `docs/view-patterns.md` for the full set of
+Herb-safe patterns.
