@@ -15,6 +15,10 @@ that aren't obvious from the guides.
 - [State transitions and side effects](#state-transitions-and-side-effects)
 - [Background jobs](#background-jobs)
 - [Parallel execution](#parallel-execution)
+- [Shuffled unordered selects](#shuffled-unordered-selects)
+- [Forgery protection](#forgery-protection)
+- [Content-type allow-lists](#content-type-allow-lists)
+- [Running the suite in bin/ci](#running-the-suite-in-binci)
 - [External HTTP with VCR](#external-http-with-vcr)
 - [Test helper modules](#test-helper-modules)
 - [Anti-patterns](#anti-patterns)
@@ -188,12 +192,98 @@ end
 
 ```ruby
 class ActiveSupport::TestCase
-  parallelize workers: :number_of_processors,
-              work_stealing: ENV["WORK_STEALING"] != "false"
+  parallelize workers: :number_of_processors
 end
 ```
 
+Tests are assigned to workers round-robin, so the same `--seed` and worker count
+run the same sequence on each worker — an order-dependent failure reproduces by
+rerunning with that seed. One worker can draw most of the slow tests, though.
+`work_stealing: true` lets idle workers take tests from busy ones, in
+deterministic order, which smooths runtime at the cost of reproducibility; turn
+it on when runtime matters more than chasing a flaky test.
+
 System tests often need `PARALLEL_WORKERS=1` — browser instances contend.
+
+## Shuffled unordered selects
+
+```ruby
+# config/environments/test.rb
+config.active_record.shuffle_unordered_selects = true
+```
+
+Active Record shuffles the rows of every SELECT it generates without an
+`ORDER BY`, surfacing code and tests that depend on whatever order the database
+happens to return. Treat a failure as an application bug, not a test bug: the
+order is undefined in production too; in one app it found a report section
+whose order had never been specified. It's best effort — raw SQL strings, `find`,
+`find_by` and association loads aren't shuffled, and a `LIMIT 1` query is
+unaffected.
+
+## Forgery protection
+
+The test environment sets `allow_forgery_protection = false`, so a test of the
+CSRF strategy switches it on, and uses `https!` because a request with no
+`Sec-Fetch-Site` header passes `:header_only` over plain HTTP. Assert only what
+the app chose — here, that a `:header_or_legacy_token` override still accepts
+a token from a client that sends no header — not Rails' own header handling:
+
+```ruby
+class ForgeryProtectionTest < ActionDispatch::IntegrationTest
+  setup do
+    @allow_forgery_protection = ActionController::Base.allow_forgery_protection
+    ActionController::Base.allow_forgery_protection = true
+    https!
+    sign_in_as :member
+  end
+
+  teardown do
+    ActionController::Base.allow_forgery_protection = @allow_forgery_protection
+  end
+
+  test "accepts an authenticity token when Sec-Fetch-Site is missing" do
+    get root_path
+    token = css_select("meta[name=csrf-token]").first["content"]
+
+    post cards_path, params: { card: { title: "Logo" } },
+                     headers: { "X-CSRF-Token" => token }
+
+    assert_response :redirect
+  end
+end
+```
+
+## Content-type allow-lists
+
+Marcel 2 identifies new blobs with canonical types (`image/bmp`, not
+`image/x-bmp`), so an allow-list that string-compares `content_type` can stop
+matching without any error. Pin it with a test that identifies a sample of each
+allowed extension the way an upload is identified:
+
+```ruby
+test "every allowed upload type is identified as allowed" do
+  Dir[File.join(file_fixture_path, "uploads", "*")].each do |path|
+    File.open(path) do |io|
+      blob = ActiveStorage::Blob.build_after_unfurling(io: io, filename: File.basename(path))
+
+      assert_includes Attachment::ALLOWED_CONTENT_TYPES, blob.content_type, path
+    end
+  end
+end
+```
+
+## Running the suite in bin/ci
+
+`config/ci.rb` (shown in `docs/rails-8-modern-stack.md`) runs the checks in a
+`group "Checks", parallel: 2` with the tests as a sub-group. A sub-group takes
+one slot and runs its steps sequentially, and unit and system tests must stay
+sequential when they share the test SQLite file. `bin/rails herb:check` goes in
+the checks, so a template Herb rejects fails CI rather than a page.
+
+Don't expect the parallel group to save time on a developer laptop. Measured on
+a 10-core machine, it made no net difference: the parallelized unit tests
+already saturate the cores, and Brakeman competes with them. It pays off where
+the checks dominate the run.
 
 ## External HTTP with VCR
 

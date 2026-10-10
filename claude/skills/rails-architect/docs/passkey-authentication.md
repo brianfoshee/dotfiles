@@ -383,6 +383,15 @@ export default class extends Controller {
 }
 ```
 
+These `fetch` calls come from the app's own pages, so the browser sends
+`Sec-Fetch-Site: same-origin`, and that header is what passes forgery
+protection. Under the default `:header_only` strategy Rails never reads the
+`X-CSRF-Token` header; it matters only under `:header_or_legacy_token`, for a
+client that sends no `Sec-Fetch-Site`. Either way the begin/complete endpoints
+stay on `ActionController::Base` with forgery protection on — a cross-site
+request is rejected before a challenge is issued. See
+`docs/rails-8-modern-stack.md` for the strategies.
+
 ## Configuration
 
 ```ruby

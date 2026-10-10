@@ -60,11 +60,6 @@ config.action_text.editor = :trix
 
 Check the live state with `Rails.application.config.action_text.editor`.
 
-On Rails too old for the adapter interface, Lexxy falls back to prepending onto
-the ActionText tag helpers; `Lexxy.supports_editor_adapter?` reports which path
-is active, and `config.lexxy.override_action_text_defaults = false` opts out of
-the fallback in favor of calling `form.lexxy_rich_text_area` explicitly.
-
 ## Editor attributes
 
 `<lexxy-editor>` is a form-associated custom element with native validation.
@@ -474,6 +469,13 @@ end
 
 `to_editor_html` delegates to the configured editor's `as_editable`.
 
+Code that reaches for Trix by name uses deprecated API: `Content#to_trix_html`,
+`RichText#to_trix_html`, `ActionText::TrixAttachment`,
+`ActionText::Attachments::TrixConversion`, and
+`Attachable#to_trix_content_attachment_partial_path`. Go through the editor
+instead — `to_editor_html`, and `to_editor_content_attachment_partial_path` on
+attachables.
+
 ## Extensions
 
 ```javascript
@@ -587,5 +589,5 @@ end
 ## References
 
 - [Lexxy](https://github.com/basecamp/lexxy) · [docs](https://lexxy.dev/docs/)
-- [ActionText guide](https://guides.rubyonrails.org/action_text_overview.html) · [edge](https://edgeguides.rubyonrails.org/action_text_overview.html)
+- [ActionText guide](https://edgeguides.rubyonrails.org/action_text_overview.html)
 - [Lexical](https://lexical.dev/)
