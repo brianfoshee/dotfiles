@@ -9,6 +9,14 @@ comparison gives correct chronological ordering.
 The cost is ~30 bytes per row versus an integer, on both the table and every
 index. Only worth weighing on tables with hundreds of millions of rows.
 
+The alternative is 16-byte BLOBs behind a custom `:uuid` attribute type that
+stores binary and exposes a string (hex, or base36 for shorter URLs). Register
+the id default at the type level, for every model whose primary key is `:uuid`,
+and Active Storage and Action Text need none of the wiring below. The price is
+a custom type, adapter and schema-dumper patches against private Active Record
+APIs, and ids you can't read in the `sqlite3` shell. Take it only when the TEXT
+overhead measurably matters.
+
 ## Contents
 
 - [Configuration](#configuration)
@@ -106,6 +114,12 @@ end
 
 `type: :string` on every reference is the easy thing to forget; without it Rails
 creates a bigint column and the foreign key silently never matches.
+
+Some MySQL-backed apps drop foreign-key constraints entirely, citing deadlocks,
+bulk-load and truncation friction, and write cost, and leave integrity to the
+models. On SQLite, keep them. For a bulk import that loads rows out of
+dependency order, run `PRAGMA defer_foreign_keys = ON` inside the import's
+transaction so the constraints are checked once, at commit.
 
 Pure join tables take `id: false` — the composite index is the natural key, and
 a UUID column would be 36 bytes of nothing:

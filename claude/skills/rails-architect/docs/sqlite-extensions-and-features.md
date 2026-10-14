@@ -67,36 +67,54 @@ WHERE embedding MATCH '[...]' ORDER BY distance LIMIT 10;
 
 FTS5 is a virtual-table module compiled into most SQLite builds, with built-in BM25 ranking and external-content mode. Prefer it over an external search engine for single-server apps.
 
-**Rails has native migration support** (`create_virtual_table` / `drop_virtual_table`) and dumps the virtual table to `schema.rb` while excluding its shadow tables:
+**FTS5 rowids are integers.** `content_rowid` must name an `INTEGER PRIMARY KEY`; pointing it at a UUID string key fails with `datatype mismatch`. Nor can you fall back to the implicit rowid of a UUID-keyed table, which `VACUUM` may renumber. With UUID primary keys, index a separate integer-keyed search table rather than the source table:
 
 ```ruby
-create_virtual_table "documents_fts", "fts5",
-  ["title", "body", "content='documents'", "content_rowid='id'", "tokenize='porter'"]
+create_table :search_records do |t|   # integer key on purpose: it becomes the FTS5 rowid
+  t.string :searchable_type, null: false
+  t.string :searchable_id, null: false
+  t.string :title
+  t.text :content
+  t.index [:searchable_type, :searchable_id], unique: true
+end
 ```
 
-**Keep the index in sync with DB triggers** (external-content mode; transactional, unlike AR callbacks):
+**Rails has native migration support** (`create_virtual_table` / `drop_virtual_table`) and dumps the virtual table to `schema.rb`, including `content=` and `content_rowid=`, while excluding its shadow tables. Create virtual tables with `create_virtual_table`, not a multi-line `execute`: the dumper's parser doesn't match SQL that spans lines and raises.
+
+```ruby
+create_virtual_table "search_records_fts", "fts5",
+  ["title", "content", "content='search_records'", "content_rowid='id'", "tokenize='porter'"]
+```
+
+**Keep the index in sync with DB triggers** on the search table (external-content mode; transactional, unlike AR callbacks). On SQLite, `execute` runs only the first statement of a multi-statement string and silently drops the rest, so create each trigger with its own `execute`:
 
 ```ruby
 execute <<~SQL
-  CREATE TRIGGER documents_ai AFTER INSERT ON documents BEGIN
-    INSERT INTO documents_fts(rowid, title, body) VALUES (new.id, new.title, new.body);
-  END;
-  CREATE TRIGGER documents_ad AFTER DELETE ON documents BEGIN
-    INSERT INTO documents_fts(documents_fts, rowid, title, body) VALUES ('delete', old.id, old.title, old.body);
-  END;
-  CREATE TRIGGER documents_au AFTER UPDATE ON documents BEGIN
-    INSERT INTO documents_fts(documents_fts, rowid, title, body) VALUES ('delete', old.id, old.title, old.body);
-    INSERT INTO documents_fts(rowid, title, body) VALUES (new.id, new.title, new.body);
-  END;
+  CREATE TRIGGER search_records_ai AFTER INSERT ON search_records BEGIN
+    INSERT INTO search_records_fts(rowid, title, content) VALUES (new.id, new.title, new.content);
+  END
+SQL
+execute <<~SQL
+  CREATE TRIGGER search_records_ad AFTER DELETE ON search_records BEGIN
+    INSERT INTO search_records_fts(search_records_fts, rowid, title, content) VALUES ('delete', old.id, old.title, old.content);
+  END
+SQL
+execute <<~SQL
+  CREATE TRIGGER search_records_au AFTER UPDATE ON search_records BEGIN
+    INSERT INTO search_records_fts(search_records_fts, rowid, title, content) VALUES ('delete', old.id, old.title, old.content);
+    INSERT INTO search_records_fts(rowid, title, content) VALUES (new.id, new.title, new.content);
+  END
 SQL
 ```
+
+The model writes its row from `after_save_commit` with `upsert(..., unique_by: [:searchable_type, :searchable_id])` and deletes it from `after_destroy_commit`. Writing from the model also reaches ActionText bodies, which live in `action_text_rich_texts`, out of sight of triggers on the source table.
 
 **Query from ActiveRecord:**
 
 ```ruby
-Document.joins("JOIN documents_fts ON documents_fts.rowid = documents.id")
-        .where("documents_fts MATCH ?", query)
-        .order(Arel.sql("bm25(documents_fts)"))
+SearchRecord.joins("JOIN search_records_fts ON search_records_fts.rowid = search_records.id")
+            .where("search_records_fts MATCH ?", query)
+            .order(Arel.sql("bm25(search_records_fts)"))
 ```
 
 **litesearch** (part of oldmoe's litestack) offers a model DSL over FTS5 (tokenizers, field weights, associated-table targets) if you want to avoid hand-writing triggers. Note it doesn't support ActionText fields.
@@ -120,6 +138,7 @@ What the ActiveRecord schema DSL supports natively for SQLite:
 | **JSONB** | 3.45+ | **No first-class helper** — no `t.jsonb` for SQLite yet; use `json`. |
 | **Partial indexes** | yes | **Yes.** `add_index :table, :col, where: "condition"`. |
 | **Expression indexes** | yes | **Yes.** `add_index :table, "lower(name)"`. |
+| **Column length limits** | ignored | **Dumped but not enforced.** SQLite stores any length in a `t.string :x, limit: 255` column. Enforce with `validates :x, length: { maximum: 255 }` or `t.check_constraint "length(x) <= 255"`. |
 
 ## The sqlite3-ruby Gem
 

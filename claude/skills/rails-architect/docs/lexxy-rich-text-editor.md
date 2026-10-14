@@ -28,7 +28,7 @@ existing Trix HTML so migration is content-compatible.
 ## Setup
 
 ```ruby
-gem "lexxy", "~> 0.9"
+gem "lexxy", "~> 1.0"
 ```
 
 Import maps with Propshaft:
@@ -46,6 +46,9 @@ import "lexxy"                 // bundlers: import "@37signals/lexxy"
 ```erb
 <%= stylesheet_link_tag "lexxy" %>
 ```
+
+With tailwindcss-rails, link your own layered sheet instead — see
+[Styling](#styling).
 
 ### ActionText integration
 
@@ -384,7 +387,8 @@ Lexxy writes the format ActionText already expects:
 
 Permitted attributes are `ActionText::Attachment::ATTRIBUTES`: `sgid`,
 `content-type`, `url`, `href`, `filename`, `filesize`, `width`, `height`,
-`previewable`, `presentation`, `caption`, `content`.
+`previewable`, `presentation`, `caption`, `alt`, `content`. Lexxy marks the
+editor `data-action-text-supports-alt` when `alt` is in that list.
 
 Consecutive image attachments group into galleries automatically, marked with
 `presentation="gallery"`. Tables are plain `<table>`/`<tr>`/`<td>`.
@@ -397,10 +401,28 @@ Two independent allowlists, which is the source of a confusing failure mode.
 for reference:
 
 ```ruby
-Rails.application.config.to_prepare do
-  ActionText::ContentHelper.allowed_tags += %w[video audio source embed table tbody tr th td]
-  ActionText::ContentHelper.allowed_attributes += %w[controls poster data-language style value start]
+# lib/lexxy/engine.rb, for reference
+ActiveSupport.on_load(:action_text_content) do
+  default_allowed_tags = Class.new.include(ActionText::ContentHelper).new.sanitizer_allowed_tags
+  ActionText::ContentHelper.allowed_tags = default_allowed_tags + %w[ video audio source embed table tbody tr th td ]
+
+  default_allowed_attributes = Class.new.include(ActionText::ContentHelper).new.sanitizer_allowed_attributes
+  ActionText::ContentHelper.allowed_attributes = default_allowed_attributes + %w[ controls poster data-language style value start ]
+
   Loofah::HTML5::SafeList::ALLOWED_CSS_FUNCTIONS << "var"
+end
+```
+
+`ActionText::ContentHelper.allowed_tags` is nil until something assigns it — the
+defaults come from `sanitizer_allowed_tags` — so `allowed_tags +=` in your own
+`to_prepare` raises on nil. Extend the list in an `on_load` hook of your own;
+app initializers register after the engine's, so yours runs after Lexxy's:
+
+```ruby
+# config/initializers/sanitization.rb
+ActiveSupport.on_load(:action_text_content) do
+  ActionText::ContentHelper.allowed_tags += %w[ details summary ]
+  ActionText::ContentHelper.allowed_attributes += %w[ data-turbo-frame ]
 end
 ```
 
@@ -503,6 +525,29 @@ is no oEmbed or iframe, so YouTube and Vimeo links need your own attachable
 model, as does anything wanting metadata or access control.
 
 ## Styling
+
+With tailwindcss-rails, import Lexxy's split sheets into one of Tailwind's
+layers from a Propshaft stylesheet. Unlayered CSS beats every layer, so linking
+the gem's `lexxy.css` as-is would override your utilities:
+
+```css
+/* app/assets/stylesheets/lexxy.css — shadows the gem's own lexxy.css */
+@import url("lexxy-variables.css") layer(components);
+@import url("lexxy-content.css") layer(components);
+@import url("lexxy-editor.css") layer(components);
+
+:root {
+  --lexxy-color-ink: var(--color-ink);
+  --lexxy-color-canvas: var(--color-canvas);
+  --lexxy-color-accent-dark: var(--color-accent);
+  --lexxy-font-base: var(--font-sans);
+}
+```
+
+Link it after the Tailwind build so Tailwind's `@layer theme, base, components,
+utilities;` order statement comes first. Map `--lexxy-*` onto tokens you define
+in `@theme`, and declare them with `@theme static`: Tailwind v4 emits only the
+theme variables a utility uses, so an unreferenced token would be undefined.
 
 Most theming is exposed as CSS custom properties on `:root`
 (`lexxy-variables.css`). The Editor row below is the exception — those four are

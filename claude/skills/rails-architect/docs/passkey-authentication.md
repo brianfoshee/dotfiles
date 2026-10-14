@@ -1,11 +1,12 @@
 # Passkey Authentication (WebAuthn) for Rails
 
 Passkey-only authentication with the `webauthn-ruby` gem: no passwords, magic
-links for provisioning, challenges in the session, Stimulus on the front end.
-Rails' built-in `bin/rails generate authentication` covers email/password only,
-so this is all hand-rolled.
+links for provisioning, signed stateless challenges, Stimulus on the front end.
+It keeps the session plumbing from `bin/rails generate authentication`
+(`Current.session`, `start_new_session_for`, `allow_unauthenticated_access`)
+and replaces the password half, which is all the generator covers.
 
-The shape: an admin emails a `signed_id` magic link, the user follows it and is
+The shape: an admin emails a `generates_token_for` magic link, the user follows it and is
 logged in for long enough to register a passkey, and every login after that is
 WebAuthn. Email is only an attack surface during that first 30-minute window;
 after setup it plays no part in authentication.
@@ -13,8 +14,8 @@ after setup it plays no part in authentication.
 ## Contents
 
 - [Data model](#data-model)
-- [Registration must bind to current_user](#registration-must-bind-to-current_user)
-- [Session-based challenges](#session-based-challenges)
+- [Registration must bind to Current.user](#registration-must-bind-to-currentuser)
+- [Signed challenges](#signed-challenges)
 - [Magic links](#magic-links)
 - [Registration controller](#registration-controller)
 - [Authentication controller](#authentication-controller)
@@ -63,11 +64,13 @@ class User < ApplicationRecord
   # add_column :users, :webauthn_id, :string, null: false
   before_create { self.webauthn_id ||= WebAuthn.generate_user_id }
 
-  def passkey_registered? = credentials.exists?
-
-  def generate_magic_link_token
-    signed_id(expires_in: 30.minutes, purpose: :passkey_setup)
+  # Embedding the newest credential's timestamp voids the link once a passkey
+  # is registered.
+  generates_token_for :passkey_setup, expires_in: 30.minutes do
+    credentials.maximum(:created_at)
   end
+
+  def passkey_registered? = credentials.exists?
 end
 
 class Credential < ApplicationRecord
@@ -90,22 +93,27 @@ class Credential < ApplicationRecord
 end
 ```
 
-## Registration must bind to current_user
+With an Identity/User split (see `docs/authorization-and-roles.md`),
+credentials and `webauthn_id` belong to the Identity rather than the User, so
+one passkey signs into every account that identity belongs to.
+
+## Registration must bind to Current.user
 
 The single most important rule in this document. Both `begin` and `complete`
-derive the user from `current_user` and nothing else:
+derive the user from `Current.user` and nothing else:
 
-- `begin` must not do `User.find(params[:user_id] || current_user.id)`.
+- `begin` must not do `User.find(params[:user_id] || Current.user.id)`.
 - `begin` must not stash `session[:webauthn_user_id]`.
 - `complete` must not read a user id from params or the session.
-- `complete` must not call `login(user)` — the magic link already logged them in.
+- `complete` must not call `start_new_session_for` — the magic link already
+  signed them in.
 
 Get any of these wrong and an authenticated attacker passes a victim's id to
 `begin`, completes the ceremony with their own authenticator, and ends up logged
 in as the victim with a persistent passkey on their own device. Without RBAC
 that's full account takeover from any login. A completed ceremony proves only
 that the attacker holds *some* authenticator; it says nothing about which
-account the credential belongs to. That binding comes from the server-side
+account the credential belongs to. That binding comes from the authenticated
 session or it doesn't exist.
 
 ```ruby
@@ -120,55 +128,58 @@ test "begin ignores user_id param targeting another user" do
 end
 ```
 
-## Session-based challenges
+## Signed challenges
 
-Challenges live in the session rather than a table: no cleanup job, expiry comes
-free, the challenge is bound to one browser, and `session.delete` enforces
-single use. Rails encrypts session data already.
+Sign the challenge instead of storing it. The browser echoes it back inside
+`clientDataJSON`, so `complete` reads it from there and checks signature,
+expiry, and purpose: no session state, no table, no cleanup job. The purpose
+stops a challenge minted for one ceremony from completing the other.
 
 ```ruby
-# Store
-session[:webauthn_challenge] = options.challenge
-session[:webauthn_challenge_created_at] = Time.current
+# app/models/webauthn/challenge.rb
+module Webauthn::Challenge
+  extend self
 
-# Retrieve — single use
-challenge = session.delete(:webauthn_challenge)
-created_at = session.delete(:webauthn_challenge_created_at)
+  def generate(purpose:)
+    signed = verifier.generate(SecureRandom.base64(32), expires_in: 5.minutes, purpose: purpose)
+    Base64.urlsafe_encode64(signed, padding: false)
+  end
 
-if Time.current - created_at > 10.minutes
-  return render json: { error: "Challenge expired" }, status: :unprocessable_entity
+  # Returns the challenge to pass to the gem's `verify`, or nil when it was
+  # forged, has expired, or was minted for the other ceremony.
+  def verify(webauthn_credential, purpose:)
+    signed = webauthn_credential.response.client_data.challenge
+    Base64.urlsafe_encode64(signed, padding: false) if verifier.verified(signed, purpose: purpose)
+  rescue ArgumentError # malformed base64 in clientDataJSON
+    nil
+  end
+
+  private
+    def verifier = Rails.application.message_verifier("webauthn_challenge")
 end
 ```
 
-This needs a database-backed session store — a ~170 byte challenge doesn't
-belong in a cookie:
-
-```ruby
-# config/initializers/session_store.rb
-Rails.application.config.session_store :active_record_store,
-  key: "_your_app_session",
-  secure: Rails.env.production?,
-  httponly: true,
-  same_site: :lax,
-  expire_after: 1.week
-```
-
-Generate the table with `bin/rails generate active_record:session_migration`.
+A signed challenge is replayable within its window. Keeping it in a cookie
+session and calling `session.delete` doesn't fix that — the client can resend
+the old cookie — so single use needs a server-side row. Keep the window short
+and let `verify` check the sign count; synced passkeys often report a count of
+0, which leaves the window as the only bound.
 
 ## Magic links
 
-`signed_id` gives tamper-proof, expiring, purpose-scoped tokens with no extra
-gem and no token table, and it works with UUID primary keys.
+`generates_token_for` gives tamper-proof, expiring, purpose-scoped tokens with
+no extra gem and no token table, and the block's value invalidates the token
+when it changes — here, as soon as the user registers a passkey.
 
 ```ruby
 class SessionsController < ApplicationController
-  skip_before_action :require_authentication, only: [:new, :magic_link]
+  allow_unauthenticated_access only: [:new, :magic_link]
 
   def magic_link
-    user = User.find_signed!(params[:token], purpose: :passkey_setup)
-    login(user)
+    user = User.find_by_token_for!(:passkey_setup, params[:token])
+    start_new_session_for user
     redirect_to new_credential_path, notice: "Welcome! Let's set up your passkey."
-  rescue ActiveSupport::MessageVerifier::InvalidSignature
+  rescue ActiveSupport::MessageVerifier::InvalidSignature, ActiveRecord::RecordNotFound
     redirect_to login_path, alert: "Invalid or expired setup link. Contact an administrator."
   end
 end
@@ -181,13 +192,13 @@ class UsersController < ApplicationController
   before_action :require_admin, only: :send_passkey_setup_link
 
   rate_limit to: 3, within: 1.hour,
-             by: -> { [current_user.id, params[:id]] },
+             by: -> { [Current.user.id, params[:id]] },
              only: :send_passkey_setup_link
 
   def send_passkey_setup_link
     user = User.find(params[:id])
-    PasskeyMailer.setup_passkey(user, user.generate_magic_link_token).deliver_later
-    Rails.logger.info "Admin #{current_user.email} sent passkey setup link to #{user.email}"
+    PasskeyMailer.setup_passkey(user, user.generate_token_for(:passkey_setup)).deliver_later
+    Rails.logger.info "Admin #{Current.user.email} sent passkey setup link to #{user.email}"
 
     render turbo_stream: turbo_stream.replace(
       "user_#{user.id}_actions",
@@ -197,62 +208,45 @@ class UsersController < ApplicationController
 end
 ```
 
-The token is replayable within its 30-minute window. To make it strictly
-single-use, track consumption:
-
-```ruby
-def verify_magic_link!
-  raise "Magic link already used" if magic_link_used_at&.after?(30.minutes.ago)
-  update_column(:magic_link_used_at, Time.current)
-end
-```
+Until a passkey is registered the token is replayable within its 30 minutes.
+For strictly single-use tokens, store a row and consume it atomically — only
+one request can win `where(code: code).delete_all == 1`, whereas `find_by` then
+`destroy` lets two concurrent requests both succeed.
 
 ## Registration controller
 
 ```ruby
 class Webauthn::RegistrationController < ApplicationController
-  # No skip_before_action — only reachable once logged in via magic link.
-  rate_limit to: 5, within: 15.minutes, by: -> { current_user&.id }
+  # No allow_unauthenticated_access — only reachable once logged in via magic link.
+  rate_limit to: 5, within: 15.minutes, by: -> { Current.user&.id }
 
   def begin
-    user = current_user
-
     options = WebAuthn::Credential.options_for_create(
       # user.id must be valid unpadded base64url — the browser decodes it.
       # Give the model a webauthn_id column from WebAuthn.generate_user_id
       # rather than passing a raw primary key; an integer id fails outright.
-      user: { id: user.webauthn_id, name: user.email, display_name: user.name },
-      exclude: user.credentials.pluck(:credential_id).map { |id|
+      user: { id: Current.user.webauthn_id, name: Current.user.email, display_name: Current.user.name },
+      exclude: Current.user.credentials.pluck(:credential_id).map { |id|
         Base64.urlsafe_encode64(id, padding: false)
       },
       authenticator_selection: { resident_key: "preferred", user_verification: "preferred" }
     )
 
-    # Challenge only — never a user id.
-    session[:webauthn_challenge] = options.challenge
-    session[:webauthn_challenge_created_at] = Time.current
-
-    render json: options
+    # The signed challenge replaces the gem's random one. Nothing goes in the session.
+    render json: options.as_json.merge(challenge: Webauthn::Challenge.generate(purpose: :registration))
   end
 
   def complete
-    challenge = session.delete(:webauthn_challenge)
-    created_at = session.delete(:webauthn_challenge_created_at)
-
-    unless challenge && created_at
-      return render json: { error: "No active registration challenge" },
-                    status: :unprocessable_entity
-    end
-
-    if Time.current - created_at > 10.minutes
-      return render json: { error: "Challenge expired" }, status: :unprocessable_entity
-    end
-
-    user = current_user
     webauthn_credential = WebAuthn::Credential.from_create(params[:credential])
+    challenge = Webauthn::Challenge.verify(webauthn_credential, purpose: :registration)
+
+    unless challenge
+      return render json: { error: "Challenge invalid or expired" }, status: :unprocessable_entity
+    end
+
     webauthn_credential.verify(challenge)
 
-    user.credentials.create!(
+    Current.user.credentials.create!(
       credential_id: Base64.urlsafe_decode64(webauthn_credential.id),
       public_key: webauthn_credential.public_key,
       sign_count: webauthn_credential.sign_count,
@@ -260,7 +254,7 @@ class Webauthn::RegistrationController < ApplicationController
       transports: webauthn_credential.response.transports || []
     )
 
-    # No login() here — that call is the takeover vector.
+    # No start_new_session_for here — that call is the takeover vector.
     render json: { success: true, redirect_url: jobs_path }
   rescue WebAuthn::Error => e
     render json: { error: e.message }, status: :unprocessable_entity
@@ -272,29 +266,26 @@ end
 
 ```ruby
 class Webauthn::AuthenticationController < ApplicationController
-  skip_before_action :require_authentication
+  allow_unauthenticated_access
 
   rate_limit to: 10, within: 15.minutes, by: -> { request.remote_ip }
 
   def begin
     options = WebAuthn::Credential.options_for_get(user_verification: "preferred")
-    session[:webauthn_challenge] = options.challenge
-    session[:webauthn_challenge_created_at] = Time.current
-    render json: options
+    render json: options.as_json.merge(challenge: Webauthn::Challenge.generate(purpose: :authentication))
   end
 
   def complete
-    challenge = session.delete(:webauthn_challenge)
-    created_at = session.delete(:webauthn_challenge_created_at)
+    webauthn_credential = WebAuthn::Credential.from_get(params[:credential])
+    challenge = Webauthn::Challenge.verify(webauthn_credential, purpose: :authentication)
 
-    unless challenge && created_at
-      return render json: { error: "No active challenge" }, status: :unauthorized
+    unless challenge
+      return render json: { error: "Challenge invalid or expired" }, status: :unauthorized
     end
 
     credential = Credential.find_by!(
       credential_id: Base64.urlsafe_decode64(params[:credential][:id])
     )
-    webauthn_credential = WebAuthn::Credential.from_get(params[:credential])
 
     webauthn_credential.verify(
       challenge,
@@ -303,7 +294,7 @@ class Webauthn::AuthenticationController < ApplicationController
     )
 
     credential.update!(sign_count: webauthn_credential.sign_count, last_used_at: Time.current)
-    login(credential.user)
+    start_new_session_for credential.user
     render json: { success: true, redirect_url: jobs_path }
 
   # A counter that fails to advance suggests a cloned authenticator. `verify`
@@ -536,7 +527,7 @@ class ApplicationSystemTestCase < ActionDispatch::SystemTestCase
   end
 
   def register_passkey_via_ui(user)
-    visit magic_link_path(user.generate_magic_link_token)
+    visit magic_link_path(user.generate_token_for(:passkey_setup))
     assert_current_path new_credential_path
     click_button "Create passkey"
     assert_current_path jobs_path, wait: 10
@@ -556,7 +547,7 @@ class PasskeyAuthenticationTest < ApplicationSystemTestCase
   teardown { remove_virtual_authenticator }  # else credentials leak between tests
 
   test "user registers passkey via magic link" do
-    visit magic_link_path(@user.generate_magic_link_token)
+    visit magic_link_path(@user.generate_token_for(:passkey_setup))
     click_button "Create passkey"
 
     assert_current_path jobs_path, wait: 10  # ceremonies are async; short waits flake
@@ -574,7 +565,7 @@ class PasskeyAuthenticationTest < ApplicationSystemTestCase
   end
 
   test "expired magic link is rejected" do
-    token = @user.generate_magic_link_token
+    token = @user.generate_token_for(:passkey_setup)
     travel 31.minutes                  # mint first, then advance — not travel { mint }
     visit magic_link_path(token)
     assert_text "Invalid or expired setup link"
@@ -620,12 +611,14 @@ if (await PublicKeyCredential.isConditionalMediationAvailable()) {
 ```
 
 **Hints** steer the browser's picker — `client-device`, `security-key`, or
-`hybrid` (cross-device via QR). Merge them into the options hash server-side:
+`hybrid` (cross-device via QR). Merge them in server-side alongside the
+challenge:
 
 ```ruby
-options_hash = JSON.parse(options.to_json)
-options_hash["hints"] = ["client-device", "hybrid"]
-render json: options_hash
+render json: options.as_json.merge(
+  challenge: Webauthn::Challenge.generate(purpose: :authentication),
+  hints: ["client-device", "hybrid"]
+)
 ```
 
 **Signal API** keeps the authenticator's passkey list in sync with the server,
