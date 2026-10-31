@@ -61,7 +61,7 @@ WHERE embedding MATCH '[...]' ORDER BY distance LIMIT 10;
 
 `vec0` tables aren't standard AR-modeled tables, so query them via `execute` / `find_by_sql`.
 
-**vs pgvector.** sqlite-vec wins on zero-infra/embedded/edge deployment (single file, no server) — a natural fit when the app is already SQLite-on-Rails and the corpus is small-to-moderate. It does brute-force KNN by default (no mature ANN/HNSW index), so pgvector remains the safer choice for large-scale, high-concurrency RAG.
+It does brute-force KNN by default (no mature ANN/HNSW index), so it suits a small-to-moderate corpus.
 
 ## Full-Text Search: FTS5
 
