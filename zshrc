@@ -31,9 +31,16 @@ if [[ $una == *"arm64"* ]]; then
   eval "$(/opt/homebrew/bin/brew shellenv)"
 fi
 
-# setup mise for runtime version management
+# setup mise for runtime version management. The hook-based activation
+# only updates PATH at the prompt, so a non-interactive shell (Claude Code,
+# editors, scripts) uses the shims, which resolve the version from the
+# current directory at exec time.
 if command -v mise &>/dev/null; then
-  eval "$(mise activate zsh)"
+  if [[ -o interactive ]]; then
+    eval "$(mise activate zsh)"
+  else
+    eval "$(mise activate zsh --shims)"
+  fi
 fi
 
 # for setting up git / pgp

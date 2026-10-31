@@ -36,7 +36,8 @@ A healthy suite is bottom-heavy:
 | System            | <1%    | Critical journeys needing a browser |
 
 For scale: a 760-test application under this distribution has three system
-tests. Production 37signals apps run about five for an entire product.
+tests. Mature production apps stay near 1%, each system test pinning a
+regression only a browser can reproduce.
 
 ## Choosing a level
 
@@ -96,8 +97,10 @@ end
 
 ## Multi-tenancy setup
 
-Set the account for every test, and give integration tests the URL prefix that
-the tenancy middleware expects:
+Set the account for every test, and give integration and system tests the URL
+prefix that the tenancy middleware expects. Rails main freezes
+`default_url_options`, so merge and reassign rather than writing a key in
+place, which raises `FrozenError`:
 
 ```ruby
 # test/test_helper.rb
@@ -105,15 +108,34 @@ module ActiveSupport
   class TestCase
     setup { Current.account = accounts(:primary) }
     teardown { Current.clear_all }
+
+    # Jobs must restore their own account, not borrow the test's
+    def perform_enqueued_jobs(...)
+      saved_account, Current.account = Current.account, nil
+      super
+    ensure
+      Current.account = saved_account
+    end
   end
 end
 
 class ActionDispatch::IntegrationTest
   setup do
-    integration_session.default_url_options[:script_name] = "/#{accounts(:primary).slug}"
+    integration_session.default_url_options =
+      integration_session.default_url_options.merge(script_name: "/#{accounts(:primary).slug}")
+  end
+end
+
+class ActionDispatch::SystemTestCase
+  setup do
+    self.default_url_options = default_url_options.merge(script_name: "/#{accounts(:primary).slug}")
   end
 end
 ```
+
+Without the `perform_enqueued_jobs` override, the per-test `Current.account`
+leaks into every job the test performs and hides a job that fails to serialize
+and restore its account.
 
 ## JSON and store columns
 
@@ -201,7 +223,14 @@ run the same sequence on each worker — an order-dependent failure reproduces b
 rerunning with that seed. One worker can draw most of the slow tests, though.
 `work_stealing: true` lets idle workers take tests from busy ones, in
 deterministic order, which smooths runtime at the cost of reproducibility; turn
-it on when runtime matters more than chasing a flaky test.
+it on when runtime matters more than chasing a flaky test. An environment
+switch keeps both:
+
+```ruby
+parallelize workers: :number_of_processors, work_stealing: ENV["WORK_STEALING"] != "false"
+```
+
+Rerun a failure with `WORK_STEALING=false` and its seed to reproduce it.
 
 System tests often need `PARALLEL_WORKERS=1` — browser instances contend.
 
@@ -302,16 +331,30 @@ end
 
 ## Test helper modules
 
-Group helpers by domain rather than piling them into `test_helper.rb`:
+Group helpers by domain rather than piling them into `test_helper.rb`, and
+mirror the code's layout in the tests: `Card::Closeable` is tested in
+`test/models/card/closeable_test.rb`.
+
+An integration test's `cookies` is a Rack::Test jar with no `.signed`, so sign
+the value in a request cookie jar and copy it across, as Rails' authentication
+generator does. Signing in through the real endpoints instead also exercises
+the sign-in flow, at the cost of a few requests per test:
 
 ```ruby
 # test/test_helpers/session_test_helper.rb
 module SessionTestHelper
   def sign_in_as(user_fixture_name)
-    user = users(user_fixture_name)
-    session = user.identity.sessions.create!
-    cookies.signed[:session_token] = session.signed_id
+    session = users(user_fixture_name).identity.sessions.create!
+
+    ActionDispatch::TestRequest.create.cookie_jar.tap do |cookie_jar|
+      cookie_jar.signed[:session_token] = session.signed_id
+      cookies["session_token"] = cookie_jar[:session_token]
+    end
   end
+end
+
+ActiveSupport.on_load(:action_dispatch_integration_test) do
+  include SessionTestHelper
 end
 ```
 

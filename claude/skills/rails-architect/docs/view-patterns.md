@@ -14,13 +14,15 @@ tag builders, and separate partials per display context instead of conditionals.
 - [Composition via yield](#composition-via-yield)
 - [Turbo](#turbo)
 - [Caching](#caching)
+- [JSON](#json)
 - [References](#references)
 
 ## Locals over instance variables
 
-Controllers set instance variables for the main resource and page metadata
-(`@card`, `@page_title`, `@header_class`). Partials take locals — a partial that
-reads `@card` hides its dependencies and can't be reused in another context.
+Controllers set instance variables for the main resource (`@card`). The
+template sets the page metadata the layout reads (`<% @page_title = @card.title %>`).
+Partials take locals — a partial that reads `@card` hides its dependencies and
+can't be reused in another context.
 
 ```erb
 <%= render "cards/container", card: @card, draggable: true %>
@@ -39,34 +41,40 @@ passed" from "passed as nil":
 ## Semantic tag builders
 
 The main helper pattern: named builders that encapsulate an element's classes,
-`dom_id`, and Stimulus wiring, so markup structure lives in one place and views
-read as intent.
+`dom_id`, and default data attributes, so markup structure lives in one place
+and views read as intent.
 
 ```ruby
 # app/helpers/cards_helper.rb
-def card_article_tag(card, id: dom_id(card, :article), **options, &block)
+def card_article_tag(card, id: dom_id(card, :article), data: {}, **options, &block)
   classes = [
     options.delete(:class),
     ("golden-effect" if card.golden?),
     ("card--postponed" if card.postponed?)
   ].compact.join(" ")
 
-  data = { controller: "beacon lightbox", beacon_url_value: card_reading_path(card) }
-
   tag.article id: id, class: classes, data: data, **options, &block
 end
 
-def column_frame_tag(id, src:, **options)
-  turbo_frame_tag id, src: src, loading: :lazy,
-                  data: { turbo_action: "advance" }, **options
+# app/helpers/columns_helper.rb
+def column_frame_tag(id, src: nil, data: {}, **options, &block)
+  data = data.with_defaults(controller: "frame")
+  options[:refresh] = :morph if src
+
+  turbo_frame_tag id, src: src, data: data, **options, &block
 end
 ```
 
 ```erb
-<%= card_article_tag(card) do %>
+<%= card_article_tag(card, data: { controller: "beacon lightbox", beacon_url_value: card_reading_path(card) }) do %>
   <%= render "cards/content", card: card %>
 <% end %>
 ```
+
+Take a `data:` hash and merge the caller's into the builder's defaults
+(`with_defaults`, `token_list` for space-separated values) instead of
+hard-coding wiring the caller can't extend. Page-specific Stimulus wiring stays
+in the view.
 
 Helpers are named for the domain (`cards_helper.rb`, `boards_helper.rb`) or the
 UI concern (`avatars_helper.rb`, `pagination_helper.rb`). Keep them small and
@@ -227,19 +235,41 @@ position instead of blowing the element away:
     partial: "cards/comments/comment", locals: { comment: @comment } %>
 ```
 
-Broadcast from the model for live updates, with the page subscribing:
+For live updates, broadcast page refreshes and let the page re-render through
+its normal templates, morphed in place. There are no broadcast partials to keep
+in sync:
+
+```ruby
+class Card < ApplicationRecord
+  broadcasts_refreshes
+end
+
+class Comment < ApplicationRecord
+  belongs_to :card, touch: true   # the touch fires the card's refresh
+end
+```
 
 ```erb
+<%# layout <head> %>
+<%= turbo_refresh_method_tag :morph %>
+<%= turbo_refresh_scroll_tag :preserve %>
+
+<%# cards/show.html.erb %>
 <%= turbo_stream_from @card %>
 ```
 
-```ruby
-after_update_commit do
-  broadcast_replace_to self,
-    target: dom_id(self, :container),
-    partial: "cards/container", locals: { card: self }
-end
-```
+Keep targeted `broadcast_*_later_to` for per-user UI outside the page body (a
+tray, a badge) that a refresh wouldn't reach.
+
+Morphs need markup that survives them:
+
+- A `data-turbo-permanent` element is never refreshed. That suits chrome and
+  in-progress forms but freezes content other users change. For an edit form,
+  add the attribute only while the form is connected.
+- Guard an open `<dialog>` by cancelling `turbo:before-morph-attribute` with
+  `preventDefault`.
+- Re-run client-side formatting on `turbo:morph-element`.
+- Give `src` frames `refresh: :morph` so a page refresh reloads them.
 
 Worth knowing: `data: { turbo_frame: "_top" }` escapes a frame,
 `data-turbo-permanent` preserves an element (flash containers, media players)
@@ -247,14 +277,20 @@ across navigations, and `turbo_exempts_page_from_cache` opts a dynamic page out
 of preview caching.
 
 Views declare Stimulus controllers and values; behavior lives in the controller,
-updates come from Turbo.
+updates come from Turbo. Bind global events declaratively too:
 
 ```erb
 <div data-controller="drag-drop navigable-list"
      data-action="dragstart->drag-drop#dragStart
                   drop->drag-drop#drop
-                  keydown->navigable-list#navigate">
+                  keydown@document->navigable-list#navigate">
 ```
+
+When a controller must call `addEventListener`, bind the handler once, keep that
+reference, and remove it in `disconnect()`; binding again on each connect leaks
+listeners. Make JS requests with `@rails/request.js` and
+`responseKind: "turbo-stream"` so the response goes through the same stream
+templates.
 
 ## Caching
 
@@ -266,15 +302,67 @@ updates come from Turbo.
 <%= render partial: "cards/card", collection: @cards, cached: true %>
 ```
 
-When the rendering depends on more than the record itself, make the extra state
-part of the key — otherwise a neighbor's change won't invalidate it:
+Child rows declare `belongs_to :card, touch: true`, so `cache card` already
+covers comments and assignments. Wrap a write that mustn't bump the parent in
+`Card.no_touching { ... }`.
+
+When the rendering depends on state outside the record graph — a neighbor, the
+viewer's time zone, a local that changes the markup — make it part of the key,
+otherwise a change won't invalidate it. `locals:` are not in the `cached: true`
+key:
 
 ```erb
 <%= render partial: "boards/column",
            collection: @columns,
            cached: ->(column) { [column, column.leftmost?, column.rightmost?] } %>
 
-<% cache [card, card.assignees.maximum(:updated_at)] do %>
+<%= render partial: "cards/card", collection: @cards,
+           locals: { draggable: true }, cached: ->(card) { [card, :draggable] } %>
+```
+
+Keep viewer-specific output out of record-keyed fragments, so one fragment
+serves every viewer:
+
+- Owner-only controls carry `data-creator-id`; a per-user `<style>` (or a
+  Stimulus controller reading a `current-user-id` meta tag) shows them.
+- Times render as `<time datetime="...">` and are formatted in the browser.
+- Anything else per-viewer goes in a lazy frame outside the cached fragment.
+
+Template digests track `render` calls they can see. They miss helpers and
+dynamically named partials, so declare `<%# Template Dependency: cards/display/preview %>`,
+or bump a dated `<%# Helper Dependency Updated: column_tag 2026-10-14 %>`
+comment when the helper changes.
+
+Lazy-frame endpoints are cheap to revalidate: call `fresh_when` in the action
+and let each concern add its piece to every ETag:
+
+```ruby
+class ApplicationController < ActionController::Base
+  etag { "v1" }                    # bump to bust every ETag
+  etag { Current.identity&.id }
+  stale_when_importmap_changes
+end
+```
+
+## JSON
+
+The same controller action answers HTML, Turbo Stream and JSON through
+`respond_to`; there is no separate API namespace or serializer layer. Put the
+jbuilder template beside the HTML partial and nest with `partial:, as:`:
+
+```ruby
+# app/views/cards/_card.json.jbuilder
+json.cache! card do
+  json.(card, :id, :number, :title, :created_at)
+  json.creator card.creator, partial: "users/user", as: :user
+end
+```
+
+```ruby
+respond_to do |format|
+  format.turbo_stream
+  format.json { render :show, status: :created }
+end
 ```
 
 ## References

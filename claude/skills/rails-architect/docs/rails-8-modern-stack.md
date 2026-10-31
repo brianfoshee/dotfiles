@@ -1,18 +1,20 @@
 # Rails 8.2 Modern Stack
 
-Zero-build, zero-Redis Rails: SQLite for everything, Puma plugins instead of
-Foreman, import maps instead of a bundler. Runs rails/rails main with
+No JS bundler, no Redis: SQLite for everything, Puma plugins instead of
+Foreman, import maps for JavaScript and tailwindcss-rails for CSS. Runs rails/rails main with
 `config.load_defaults 8.2`.
 
 ## Contents
 
 - [Running main](#running-main)
 - [Puma plugins](#puma-plugins)
+- [Puma tuning](#puma-tuning)
 - [Local CI runner](#local-ci-runner)
 - [Framework defaults](#framework-defaults)
 - [Herb templates](#herb-templates)
 - [Active Record](#active-record)
 - [Other APIs](#other-apis)
+- [Job continuations](#job-continuations)
 - [Combined credentials](#combined-credentials)
 - [Deployment revision tracking](#deployment-revision-tracking)
 - [SQLite multi-database setup](#sqlite-multi-database-setup)
@@ -21,6 +23,7 @@ Foreman, import maps instead of a bundler. Runs rails/rails main with
 - [Loading SQLite extensions](#loading-sqlite-extensions)
 - [When SQLite fits](#when-sqlite-fits)
 - [Solid Queue / Cache / Cable](#solid-queue--cache--cable)
+- [Framework patches](#framework-patches)
 - [Gems and layout](#gems-and-layout)
 - [References](#references)
 
@@ -70,6 +73,31 @@ something other than empty, `false` or `0`. The generated `config/deploy.yml`
 sets `SOLID_QUEUE_IN_PUMA: true` for single-server deployments; set it in
 development too if `bin/dev` should run jobs. Leave it unset wherever `bin/jobs`
 runs as its own process, or you get a supervisor in both places.
+
+## Puma tuning
+
+The generated `threads 3` assumes a database across the network. With SQLite on
+local disk there's little I/O wait for extra threads to fill, so start at one
+worker per physical core with one thread each, then measure:
+
+```ruby
+# config/puma.rb
+unless Rails.env.local?
+  workers Integer(ENV.fetch("WEB_CONCURRENCY") { Concurrent.physical_processor_count })
+  threads 1, 1
+
+  # Tidy the heap once before forking, for copy-on-write
+  before_fork { Process.warmup }
+
+  # Defer major GC out of the request path
+  before_worker_boot { GC.config(rgengc_allow_full_mark: false) }
+  out_of_band { GC.start if GC.latest_gc_info(:need_major_by) }
+end
+```
+
+Slow outbound calls — webhooks, third-party APIs — are what argue for more
+threads. `GC.config(rgengc_allow_full_mark:)` needs Ruby 3.4. The edge guide
+"Tuning Performance for Deployment" covers the trade-offs.
 
 ## Local CI runner
 
@@ -174,6 +202,21 @@ Named variants take `process: :immediately` (generated with the attachment),
 `config.active_storage.variant_processor` accepts a transformer class as well
 as `:vips` / `:mini_magick`; the built-in image analyzers then need a custom
 analyzer alongside it.
+
+**Untrusted uploads.** libvips parses whatever it's handed. Block the loaders
+that aren't fuzzed, after Active Storage has set its own defaults, and cap
+libvips' threads and cache:
+
+```ruby
+# config/initializers/vips.rb
+ActiveStorage::Transformers::Vips   # load first, so the blocks below stick
+Vips.block_untrusted(true)
+Vips.concurrency_set 4
+Vips.cache_set_max_mem 10.megabytes
+```
+
+`Vips.block("VipsForeignLoadTiff", true)` blocks a single loader the app never
+needs.
 
 Content types come from Marcel 2, which returns canonical types for newly
 identified blobs (`image/x-bmp` becomes `image/bmp`, `text/x-yaml` becomes
@@ -319,6 +362,35 @@ has_delegated_json :flags, beta: false, staff: :boolean
   `to_trix_content_attachment_partial_path`); the editor is pluggable, and
   `docs/lexxy-rich-text-editor.md` covers Lexxy.
 
+## Job continuations
+
+`ActiveJob::Continuable` lets a long sweep stop at a deploy and resume from a
+cursor instead of starting over. The model's query takes the cursor; the job
+owns it:
+
+```ruby
+class Webhook::DispatchJob < ApplicationJob
+  include ActiveJob::Continuable
+
+  def perform(event)
+    step :dispatch do |step|
+      Webhook.active.subscribed_to(event).find_each(start: step.cursor) do |webhook|
+        webhook.deliver(event)
+        step.advance! from: webhook.id
+      end
+    end
+  end
+end
+```
+
+Code outside a `step` runs on every resume; completed steps are skipped.
+`step.set!(cursor)` records an arbitrary cursor and `step.checkpoint!` is a
+bare interruption point. An error raised after the cursor has advanced resumes
+the job rather than failing it, and `max_resumptions` is unlimited by default,
+so a deterministic failure retries forever: set `self.max_resumptions` or
+`self.resume_errors_after_advancing = false`. In `config/recurring.yml`, a
+continuable job needs `class:`; plain sweeps can be `command: "Model.cleanup"`.
+
 ## Combined credentials
 
 `Rails.app.creds` checks ENV first, then falls back to encrypted
@@ -339,12 +411,16 @@ Rails.app.creds.require(:aws, :bucket)                     # nested: checks AWS_
 Rails.app.revision  # checks ENV["REVISION"], then a REVISION file, then the git SHA
 ```
 
-Useful for cache namespacing and error reporting:
+Use it for error reporting and deploy verification, not cache namespacing:
 
 ```ruby
-config.cache_store = :solid_cache_store, { namespace: Rails.app.revision }
 Sentry.set_context("app", { revision: Rails.app.revision })
 ```
+
+Template digests and `cache_key_with_version` already invalidate stale
+fragments, so a revision namespace only cold-starts the cache on every deploy.
+Namespace by environment instead (`namespace: Rails.env` in
+`config/cache.yml`).
 
 ## SQLite multi-database setup
 
@@ -356,7 +432,7 @@ and the cache can be dropped and rebuilt without touching application data.
 # config/database.yml
 default: &default
   adapter: sqlite3
-  pool: <%= ENV.fetch("RAILS_MAX_THREADS") { 5 } %>
+  max_connections: <%= ENV.fetch("RAILS_MAX_THREADS") { 5 } %>  # `pool:` is deprecated
   timeout: 5000  # installs the busy handler; see SQLite concurrency below
 
 development:
@@ -513,12 +589,35 @@ production:
 # config/cable.yml
 production:
   adapter: solid_cable
-  connects_to: cable
+  connects_to:
+    database:
+      writing: cable
+  polling_interval: 0.1.seconds
+  message_retention: 1.day
 ```
+
+Messages older than `message_retention` are trimmed as new ones are written.
 
 Solid Queue gets ACID guarantees from the database, supports priorities, delays,
 and recurring jobs via `config/recurring.yml`, and mounts a monitoring UI. Solid
 Cache is disk-backed, so it survives restarts and isn't bounded by memory.
+
+## Framework patches
+
+One file per patch, named `lib/rails_ext/<framework>_<behavior>.rb`, preferably
+a module prepended onto the framework class. Keep the directory out of the
+autoloader and require it from one initializer:
+
+```ruby
+# config/application.rb
+config.autoload_lib(ignore: %w[ assets tasks rails_ext ])
+
+# config/initializers/extensions.rb
+Dir[Rails.root.join("lib", "rails_ext", "*.rb")].each { |path| require path }
+```
+
+Open each file with why the patch exists and, on main, the upstream PR that
+will let you delete it.
 
 ## Gems and layout
 

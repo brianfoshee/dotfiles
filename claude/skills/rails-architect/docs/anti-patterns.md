@@ -35,6 +35,10 @@ end
 ```
 
 **When services ARE appropriate**: Complex multi-model operations, external API integrations, form objects.
+Put them in `app/models`, under the model's namespace when they serve one model
+(`Card::Importer#import`), named with a domain verb (`Signup#complete`) rather
+than `#call`. When a model owns the collaborator, the model exposes the entry
+point (`card.import_later`), not the controller.
 
 ## 2. Skinny Models, Fat Controllers
 
@@ -153,6 +157,20 @@ characters, and every `<label for>` pointing at it silently stops matching.
 
 <%# GOOD — nil values are omitted %>
 <input type="email" <%= tag.attributes(id: id) %>>
+```
+
+The same goes for element markup. Interpolating into a string and calling
+`html_safe` leaves escaping to the author, and one missed `h` is an XSS hole.
+Build each piece with a tag helper and join with `safe_join` or the view
+helper `to_sentence`. `Array#to_sentence` returns a plain String, so its
+markup renders escaped.
+
+```erb
+<%# BAD %>
+<%= names.map { "<strong>#{h it}</strong>" }.join(", ").html_safe %>
+
+<%# GOOD %>
+<%= to_sentence(names.map { tag.strong(it) }) %>
 ```
 
 ## 9. ERB Output in Attribute Position

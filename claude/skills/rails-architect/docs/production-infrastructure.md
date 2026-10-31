@@ -46,16 +46,14 @@ registry:
 env:
   clear:
     RAILS_ENV: production
-    RAILS_LOG_TO_STDOUT: true
-    RAILS_SERVE_STATIC_FILES: true
     JOB_CONCURRENCY: 4
-    WEB_CONCURRENCY: 2
-    RAILS_MAX_THREADS: 5
   secret:
     - RAILS_MASTER_KEY
 
 volumes:
   - "app_storage:/rails/storage"   # named volume keeps SQLite across deploys
+
+asset_path: /rails/public/assets   # old and new assets both served mid-deploy
 
 accessories:
   tunnel:
@@ -96,6 +94,11 @@ kamal accessory boot litestream      # first time
 kamal accessory reboot litestream    # after a config change
 kamal accessory logs litestream -f
 ```
+
+The generated `production.rb` logs to STDOUT and serves `public/` with no env
+vars set. Web concurrency is set in `config/puma.rb` — see Puma tuning in
+`docs/rails-8-modern-stack.md` — so measure before adding `WEB_CONCURRENCY` or
+`RAILS_MAX_THREADS` here.
 
 Everyday commands: `bin/kamal setup` (first deploy), `deploy`,
 `deploy --skip-push` (image already pushed by CI), `logs -f [-r job]`,
@@ -328,12 +331,16 @@ on:
   push:
     branches: [main]
 
+permissions:
+  contents: read
+
 jobs:
   scan:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: ruby/setup-ruby@v1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
+      - uses: ruby/setup-ruby@651ff0d62c5c79bed6d53ec518387aae20e72c1a # v1.329.0
         with: { bundler-cache: true }
       - run: bin/brakeman --no-pager --exit-on-warn
       - run: bin/bundler-audit
@@ -342,22 +349,24 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: ruby/setup-ruby@v1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
+      - uses: ruby/setup-ruby@651ff0d62c5c79bed6d53ec518387aae20e72c1a # v1.329.0
         with: { bundler-cache: true }
       - run: bin/rubocop -f github
 
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: ruby/setup-ruby@v1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
+      - uses: ruby/setup-ruby@651ff0d62c5c79bed6d53ec518387aae20e72c1a # v1.329.0
         with: { bundler-cache: true }
       - run: bin/rails herb:check
       - run: bin/rails db:test:prepare test
       - run: bin/rails test:system
         if: always()
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: failure()
         with: { name: screenshots, path: tmp/screenshots }
 
@@ -366,11 +375,12 @@ jobs:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
-      contents: read     # explicit permissions drop the defaults, so checkout needs this
+      contents: read     # job permissions replace the top-level ones, so restate this
       packages: write    # ghcr.io push
     steps:
-      - uses: actions/checkout@v4
-      - uses: ruby/setup-ruby@v1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
+      - uses: ruby/setup-ruby@651ff0d62c5c79bed6d53ec518387aae20e72c1a # v1.329.0
         with: { bundler-cache: true }
       - run: bin/kamal build push
         env:
@@ -381,10 +391,11 @@ jobs:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: ruby/setup-ruby@v1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
+      - uses: ruby/setup-ruby@651ff0d62c5c79bed6d53ec518387aae20e72c1a # v1.329.0
         with: { bundler-cache: true }
-      - uses: tailscale/github-action@v2
+      - uses: tailscale/github-action@d1b6cd204f8dceda5b3eaad7f1f767be390056cd # v4.2.0
         with:
           oauth-client-id: ${{ secrets.TAILSCALE_OAUTH_CLIENT_ID }}
           oauth-secret: ${{ secrets.TAILSCALE_OAUTH_CLIENT_SECRET }}
@@ -399,6 +410,14 @@ jobs:
           RAILS_MASTER_KEY: ${{ secrets.RAILS_MASTER_KEY }}
           KAMAL_REGISTRY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
 ```
+
+Pin every action to a commit SHA with the version in a comment: a tag can be
+moved to malicious code, a SHA can't, and Dependabot still bumps both.
+`persist-credentials: false` keeps the token out of `.git/config`, and the
+top-level `permissions:` makes every job read-only unless it asks for more.
+Audit the workflow files with [zizmor](https://docs.zizmor.sh) (`zizmor
+.github/`), which flags unpinned actions, persisted credentials and template
+injection.
 
 `RAILS_MASTER_KEY` is needed at deploy and runtime, not to build the image.
 `GITHUB_TOKEN` is provided automatically but needs `packages: write`. The
@@ -421,10 +440,20 @@ updates:
     groups:
       bundler:
         patterns: ["*"]
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    groups:
+      github-actions:
+        patterns: ["*"]
 ```
 
 With `gem "rails", github: "rails/rails", branch: "main"`, the daily grouped PR
-moves the locked revision forward; a `ref:` pin would never be bumped.
+moves the locked revision forward; a `ref:` pin would never be bumped. A
+`cooldown:` (holding new releases for some days) blunts supply-chain attacks,
+but it delays security fixes the same way, so list `rails` and other
+security-critical gems under `cooldown.exclude`.
 
 ## Active Storage
 
@@ -445,72 +474,30 @@ Direct uploads need CORS on the bucket — allow the app origin for
 
 ## Dockerfile
 
-```dockerfile
-# syntax=docker/dockerfile:1
-ARG RUBY_VERSION=3.4.1
+Start from the Dockerfile and `bin/docker-entrypoint` that `rails new`
+generates, and keep them close to the generator so upgrades diff cleanly. The
+generated file already does what hand-written ones tend to get wrong:
 
-FROM ruby:$RUBY_VERSION-slim AS base
-WORKDIR /rails
-ENV RAILS_ENV=production \
-    BUNDLE_DEPLOYMENT=1 \
-    BUNDLE_PATH=/usr/local/bundle
+- `# check=error=true` fails the build on Dockerfile lint warnings.
+- jemalloc is linked through an arch-neutral path
+  (`/usr/lib/$(uname -m)-linux-gnu/libjemalloc.so.2` → `/usr/local/lib`) and
+  set once in `ENV LD_PRELOAD`, so arm64 and amd64 images both work. Don't
+  hard-code `x86_64` or set `LD_PRELOAD` in the entrypoint.
+- `BUNDLE_WITHOUT="development"`, `bootsnap precompile --gemfile`, and `git` in
+  the build stage, which Bundler needs to clone rails/rails; the checkouts'
+  `.git` directories are deleted in the same layer.
+- A non-root `USER 1000:1000` set before `COPY --chown=rails:rails`, so the app
+  owns only its runtime files.
+- `ARG RUBY_VERSION` matching `.ruby-version`; bump both together.
+- The entrypoint runs `db:prepare` only when the command is `rails server`, so
+  `kamal console` and one-off commands don't migrate.
 
-FROM base AS build
-RUN apt-get update -qq && \
-    apt-get install --no-install-recommends -y \
-    build-essential git pkg-config libssl-dev libyaml-dev
-
-COPY Gemfile Gemfile.lock ./
-RUN bundle install && \
-    rm -rf ~/.bundle/ "${BUNDLE_PATH}"/ruby/*/cache "${BUNDLE_PATH}"/ruby/*/bundler/gems/*/.git
-
-COPY . .
-RUN bundle exec bootsnap precompile app/ lib/
-RUN SECRET_KEY_BASE_DUMMY=1 ./bin/rails assets:precompile
-
-FROM base
-RUN apt-get update -qq && \
-    apt-get install --no-install-recommends -y \
-    curl libjemalloc2 libvips sqlite3 poppler-utils && \
-    rm -rf /var/lib/apt/lists /var/cache/apt/archives
-
-COPY --from=build "${BUNDLE_PATH}" "${BUNDLE_PATH}"
-COPY --from=build /rails /rails
-
-RUN groupadd --system --gid 1000 rails && \
-    useradd rails --uid 1000 --gid 1000 --create-home --shell /bin/bash && \
-    chown -R rails:rails db log storage tmp
-USER 1000:1000
-
-ENV LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so.2
-
-ENTRYPOINT ["/rails/bin/docker-entrypoint"]
-EXPOSE 80
-CMD ["./bin/thrust", "./bin/rails", "server"]
-```
-
-The build stage needs `git` because Bundler clones rails/rails (and any other
-git gems) during `bundle install`; the `.git` directories of those checkouts are
-removed in the same layer so they don't reach the final image.
+Deviations worth making: add `poppler-utils` (PDF previews) or other runtime
+libraries to the base stage's package list, and set `builder: arch:` in
+`config/deploy.yml` to the server's architecture.
 
 `bin/thrust` wraps Puma with Thruster (`gem "thruster", require: false`), which
 adds X-Sendfile, asset caching, compression, and HTTP/2.
-
-The entrypoint migrates only when actually booting the server, so `kamal
-console` and one-off commands don't run migrations:
-
-```bash
-#!/bin/bash
-set -e
-
-export LD_PRELOAD=$(find /usr/lib -name 'libjemalloc.so.2' 2>/dev/null | head -1)
-
-if [ "${@: -2:1}" == "./bin/rails" ] && [ "${@: -1:1}" == "server" ]; then
-  ./bin/rails db:prepare
-fi
-
-exec "$@"
-```
 
 ## SSL behind a proxy
 
@@ -527,36 +514,19 @@ the proxy re-issues, producing a loop.
 
 ## Health checks and logging
 
+Use the built-in endpoint the generator routes, which kamal-proxy probes before
+switching traffic:
+
 ```ruby
-class HealthController < ApplicationController
-  skip_before_action :authenticate_user!
-
-  def show
-    render json: { status: "ok", database: database_connected?,
-                   queue: queue_healthy?, cache: cache_healthy? }
-  end
-
-  private
-    def database_connected?
-      ApplicationRecord.connection.active?
-    rescue
-      false
-    end
-
-    def queue_healthy?
-      SolidQueue::Process.where("last_heartbeat_at > ?", 5.minutes.ago).exists?
-    rescue
-      false
-    end
-
-    def cache_healthy?
-      Rails.cache.write("health_check", Time.current)
-      Rails.cache.read("health_check").present?
-    rescue
-      false
-    end
-end
+# config/routes.rb
+get "up" => "rails/health#show", as: :rails_health_check
 ```
+
+It returns 200 once the app has booted and 500 if it raises. It skips
+`ApplicationController`, so authentication filters never block it. Don't fold
+the database, cache or queue into the probe: a probe that fails when a
+dependency hiccups gets healthy containers pulled out of rotation. Monitor those
+separately.
 
 ```ruby
 config.log_level = ENV.fetch("RAILS_LOG_LEVEL", "info").to_sym

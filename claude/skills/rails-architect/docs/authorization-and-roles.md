@@ -49,6 +49,8 @@ module User::Role
 
   def can_administer_board?(board) = admin? || board.creator == self
   def can_administer_card?(card)   = admin? || card.creator == self
+
+  def sole_owner? = active? && owner? && account.users.owner.excluding(self).none?
 end
 ```
 
@@ -56,10 +58,13 @@ Only `admin?` cascades — an owner is an admin for permission purposes. Leave
 `member?` alone: "is specifically a member" is a different question from "may
 act administratively," and cascading every predicate blurs it.
 
+`can_change?` lets users change themselves, so self-deactivation needs a
+`sole_owner?` guard, checked in a `before_action` after the permission gate.
+
 ```ruby
-create_table :users do |t|
-  t.uuid :account_id, null: false
-  t.uuid :identity_id             # nil for deactivated users
+create_table :users, id: :string do |t|
+  t.references :account, type: :string, null: false, foreign_key: true
+  t.references :identity, type: :string, foreign_key: true  # nil for deactivated users
   t.string :role, default: "member", null: false
   t.boolean :active, default: true, null: false
   t.datetime :verified_at
@@ -111,6 +116,11 @@ class Current < ActiveSupport::CurrentAttributes
 end
 ```
 
+Sign-in shouldn't reveal which emails exist: answer an unknown address exactly
+as a known one, sending both to the same code-entry page. Bind a typed code to
+the browser that asked for it with a signed cookie holding the requested email,
+and compare the two with `secure_compare`.
+
 ## Four layers of authorization
 
 **1. Account access** — the authenticated identity has an active user here.
@@ -141,6 +151,43 @@ end
 `ensure_admin` reads the account-scoped role; `ensure_staff` reads the
 cross-account identity.
 
+Controllers state their opt-outs with named macros, never a raw
+`skip_before_action`:
+
+```ruby
+module Authentication
+  extend ActiveSupport::Concern
+
+  class_methods do
+    def allow_unauthenticated_access(**options)
+      skip_before_action :require_authentication, **options
+      before_action :resume_session, **options
+      allow_unauthorized_access **options
+    end
+
+    def require_unauthenticated_access(**options)
+      allow_unauthenticated_access **options
+      before_action :redirect_authenticated_user, **options
+    end
+
+    def disallow_account_scope(**options)
+      skip_before_action :require_account, **options
+      before_action :redirect_tenanted_request, **options
+    end
+  end
+end
+
+module Authorization
+  extend ActiveSupport::Concern
+
+  class_methods do
+    def allow_unauthorized_access(**options)
+      skip_before_action :ensure_can_access_account, **options
+    end
+  end
+end
+```
+
 **2. Scoping** — the bulk of authorization, and the part that can't be
 forgotten. Loading through the user's associations means no access, no record:
 
@@ -149,6 +196,30 @@ def set_board
   @board = Current.user.boards.find(params[:id])  # RecordNotFound if no access
 end
 ```
+
+Nested controllers share the lookup through a concern, so none writes its own
+`find`:
+
+```ruby
+module CardScoped
+  extend ActiveSupport::Concern
+
+  included do
+    before_action :set_card
+  end
+
+  private
+    def set_card
+      @card = Current.user.accessible_cards.find_by!(number: params[:card_id])
+    end
+end
+
+class Cards::ClosuresController < ApplicationController
+  include CardScoped
+end
+```
+
+A `BoardScoped` concern carries the board's admin guard alongside its lookup.
 
 **3. Action permissions** — for destructive actions, on top of scoping:
 
@@ -165,10 +236,10 @@ end
 ## Resource access records
 
 ```ruby
-create_table :accesses do |t|
-  t.uuid :board_id, null: false
-  t.uuid :user_id, null: false
-  t.uuid :account_id, null: false
+create_table :accesses, id: :string do |t|
+  t.references :board, type: :string, null: false, foreign_key: true
+  t.references :user, type: :string, null: false, foreign_key: true
+  t.references :account, type: :string, null: false, foreign_key: true
   t.string :involvement, default: "access_only", null: false
   t.datetime :accessed_at
   t.timestamps
@@ -178,7 +249,7 @@ end
 A board is either all-access (every active user gets an access record, managed
 by callbacks) or selective (explicit grants; the creator gets one with
 `watching`). Involvement separates seeing a board from being notified about it:
-`enum :involvement, { access_only: 0, watching: 1 }`.
+`enum :involvement, %i[ access_only watching ].index_by(&:itself), default: :access_only`.
 
 ```ruby
 module Board::Accessible
@@ -220,6 +291,12 @@ class Access < ApplicationRecord
 end
 ```
 
+Cleanup is async, and records also move to boards a user can't see, so don't
+rely on it alone. Filter derived records like pins through current access when
+they're read, limit notification recipients to users with access when they're
+created, and have the cleanup job re-check `accessible_to?` in case access came
+back before it ran.
+
 ## Access cascades through associations
 
 Access is recorded at one level and inherited downward, so cards and comments
@@ -251,15 +328,44 @@ class Public::BoardsController < ApplicationController
 end
 ```
 
+Bearer tokens authenticate JSON requests only; any other format gets a 401
+rather than a login redirect. Each token is read or write, and a read token
+allows only GET and HEAD:
+
 ```ruby
 def authenticate_by_bearer_token
   return unless request.authorization.to_s.include?("Bearer")
 
-  authenticate_or_request_with_http_token do |token|
-    Current.identity = Identity.find_by_access_token(token)
+  if request.format.json?
+    authenticate_or_request_with_http_token do |token|
+      Current.identity = Identity.find_by_access_token(token, method: request.method)
+    end
+  else
+    request_http_token_authentication
   end
 end
 ```
+
+```ruby
+class Identity::AccessToken < ApplicationRecord
+  belongs_to :identity
+
+  has_secure_token
+  enum :permission, %w[ read write ].index_by(&:itself), default: :read
+
+  def allows?(method) = method.in?(%w[ GET HEAD ]) || write?
+end
+
+class Identity < ApplicationRecord
+  def self.find_by_access_token(token, method:)
+    access_token = Identity::AccessToken.find_by(token: token)
+    access_token.identity if access_token&.allows?(method)
+  end
+end
+```
+
+A controller that serves files to token clients, such as Active Storage's,
+overrides the JSON-only check.
 
 ## Testing
 
@@ -299,6 +405,21 @@ Keep the rules in code and the grants in a join table.
 **Authorization in model callbacks.** `before_update :ensure_can_update` fires
 in tests, console sessions, and background jobs where `Current.user` isn't what
 you think. Authorization is a request-time concern; keep it in controllers.
+The exception is a side effect that widens access, like a card move granting
+its assignees access to the new board: gate it where it happens with
+`Current.user&.can_administer_board?(board)`, so it fails closed in jobs and the
+console. Audit every indirect write to access records, not just the
+access-management controller.
+
+**Trusting Active Storage's signed URLs.** The blob and representation
+controllers inherit `ActiveStorage::BaseController`, not `ApplicationController`,
+so none of your filters run and anyone holding a signed id can fetch the file.
+Include a concern in them that authenticates and checks
+`attachment.record.try(:accessible_to?, Current.user)`, lets an unattached blob
+through only within its own account, and re-appends `set_representation` so
+variants are processed after the check. Authenticate
+`DirectUploadsController` too, and keep HTML, SVG and XML in
+`content_types_to_serve_as_binary`.
 
 ## References
 
