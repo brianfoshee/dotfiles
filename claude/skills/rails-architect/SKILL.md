@@ -83,6 +83,12 @@ belongs_to :creator, default: -> { Current.user }
 `card.update(status: :closed)` — it encapsulates the business rules, wraps them
 in a transaction, and tracks the event.
 
+**Service-shaped classes** earn their place for multi-model operations, external
+API integrations and form objects. They live in `app/models`, under the model's
+namespace when they serve one model (`Card::Importer#import`), named with a
+domain verb rather than `#call`. When a model owns the collaborator, the model
+exposes the entry point (`card.import_later`), not the controller.
+
 **Background jobs delegate to models.** Jobs stay thin wrappers. `deliver_later`
 enqueues a job whose `perform` calls `deliver`; the `_later` method is usually
 private and fired from `after_*_commit`:
@@ -175,10 +181,9 @@ Review alone doesn't verify a design. Once it lands as code, run the test suite
 
 ## Reference docs
 
-- **`docs/anti-patterns.md`** — service objects, fat controllers, god objects, custom actions, over-engineering, missing transactions, mocked tests, hand-built attribute and markup strings, ERB output in attribute position, where service-shaped classes belong
 - **`docs/feature-design-patterns.md`** — starring, comments, search, notifications as compact migration + model + controller snippets
 - **`docs/authorization-and-roles.md`** — roles, permissions, access control, opt-out macros and `*Scoped` concerns, bearer tokens, Active Storage authorization, revocation, Identity vs User separation, multi-tenant user management
-- **`docs/view-patterns.md`** — instance variables vs locals, helpers vs ERB, partial extraction, display variants, Herb-safe templates, Turbo refresh morphs, caching, JSON with jbuilder, Stimulus
+- **`docs/view-patterns.md`** — instance variables vs locals, helpers vs ERB, partial extraction, display variants, Herb-safe templates and hand-built attribute strings, Turbo refresh morphs, caching, JSON with jbuilder, Stimulus
 - **`docs/passkey-authentication.md`** — WebAuthn/passkeys, signed challenges, admin-controlled provisioning, clone detection, virtual authenticator testing
 - **`docs/uuidv7-sqlite.md`** — UUID generation, the binary-UUID alternative, Active Storage config, fixture IDs, foreign keys, migrations
 - **`docs/sqlite-extensions-and-features.md`** — `extensions:` config, sqlite-vec vector search, FTS5, sqlean, generated columns, RETURNING, JSON, column length limits, the STRICT-table caveat

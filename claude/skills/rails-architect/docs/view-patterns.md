@@ -143,9 +143,25 @@ instead of opening a `<div>` in one `<% if %>` and closing it in another:
 <%= wrap ? tag.div(body, class: wrapper_class) : body %>
 ```
 
+**Hand-built attribute strings** are what these patterns replace. `<%= %>`
+HTML-escapes its output, so `<%= "id=\"#{id}\"" if id %>` renders
+`id=&quot;email&quot;`, the browser reads an `id` containing literal quotes, and
+every `<label for>` pointing at it silently stops matching. The same goes for
+element markup: interpolating into a string and calling `html_safe` leaves
+escaping to the author, and one missed `h` is an XSS hole. Build each piece with
+a tag helper and join with `safe_join` or the view helper `to_sentence`
+(`Array#to_sentence` returns a plain String, so its markup renders escaped):
+
+```erb
+<%# BAD %>
+<%= names.map { "<strong>#{h it}</strong>" }.join(", ").html_safe %>
+
+<%# GOOD %>
+<%= to_sentence(names.map { tag.strong(it) }) %>
+```
+
 Run `bin/rails herb:check` in `bin/ci`; it compiles every HTML+ERB template,
-lists each one that fails, and exits non-zero. `docs/anti-patterns.md` has the
-attribute-string bug these patterns replace.
+lists each one that fails, and exits non-zero.
 
 ## Directory layout
 
