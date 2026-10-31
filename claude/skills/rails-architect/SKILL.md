@@ -194,4 +194,4 @@ Review alone doesn't verify a design. Once it lands as code, run the test suite
 - **`docs/testing-pyramid.md`** — fixture UUIDs, multi-tenancy and sign-in test setup, parallel and shuffled-order runs, CSRF and content-type pins, bin/ci groups
 - **`docs/lexxy-rich-text-editor.md`** — rich text and ActionText customization, pluggable editor registry, @mentions, slash commands, SGID attachables, tables, Tailwind styling
 - **`docs/rails-8-modern-stack.md`** — running main, Puma plugins and tuning, bin/ci, 8.2 framework defaults, Sec-Fetch-Site CSRF, Active Storage analysis, Herb, Active Record, SQLite multi-database, Solid adapters, job continuations, framework patches, unified credentials, revision tracking
-- **`docs/production-infrastructure.md`** — Kamal, Cloudflare Tunnel, ACME passthrough, R2, Litestream, cloud-init, CI/CD, Dependabot, Dockerfiles
+- **`docs/production-infrastructure.md`** — Kamal accessories, Litestream v0.5 config, ACME through a tunnel, CI/CD hardening, Dependabot for rails main, generated-Dockerfile deviations
