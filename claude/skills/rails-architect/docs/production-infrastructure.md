@@ -1,17 +1,18 @@
 # Production Infrastructure
 
 Deploying a SQLite-backed Rails app: Kamal onto a VM with no public IP, traffic
-arriving through a Zero Trust tunnel, Litestream replicating to object storage,
-SSH only over a VPN.
+arriving through a Cloudflare Zero Trust tunnel, Litestream replicating to R2,
+SSH only over Tailscale. The Cloudflare side is Terraform; the
+`cloudflare-domain-setup` skill covers the zone, tunnel and DNS resources.
 
 ## Contents
 
 - [Kamal](#kamal)
 - [Litestream](#litestream)
 - [VM provisioning](#vm-provisioning)
-- [Tunnel and ACME](#tunnel-and-acme)
+- [ACME through a tunnel](#acme-through-a-tunnel)
 - [CI/CD](#cicd)
-- [Active Storage](#active-storage)
+- [Active Storage on R2](#active-storage-on-r2)
 - [Dockerfile](#dockerfile)
 - [SSL behind a proxy](#ssl-behind-a-proxy)
 - [Health checks and logging](#health-checks-and-logging)
@@ -19,36 +20,15 @@ SSH only over a VPN.
 
 ## Kamal
 
-```yaml
-# config/deploy.yml
-service: myapp
-image: myorg/myapp              # registry server is prepended automatically
+Beyond the generated `config/deploy.yml`:
 
+```yaml
 servers:
   web:
     - app-server                # hostname resolved over the VPN
   job:
-    hosts:
-      - app-server
+    hosts: [app-server]
     cmd: bin/jobs               # Solid Queue worker
-
-proxy:
-  ssl: true
-  host: app.example.com
-  app_port: 80
-
-registry:
-  server: ghcr.io
-  username: myorg
-  password:
-    - KAMAL_REGISTRY_PASSWORD
-
-env:
-  clear:
-    RAILS_ENV: production
-    JOB_CONCURRENCY: 4
-  secret:
-    - RAILS_MASTER_KEY
 
 volumes:
   - "app_storage:/rails/storage"   # named volume keeps SQLite across deploys
@@ -62,8 +42,7 @@ accessories:
     network: host               # top-level key; replaces the default kamal network
     cmd: tunnel run
     env:
-      secret:
-        - TUNNEL_TOKEN
+      secret: [TUNNEL_TOKEN]
 
   litestream:
     image: litestream/litestream:0.5
@@ -79,58 +58,24 @@ accessories:
         - LITESTREAM_SECRET_ACCESS_KEY
         - LITESTREAM_REPLICA_BUCKET
         - LITESTREAM_REPLICA_ENDPOINT
-
-ssh:
-  user: deploy
 ```
 
-Services (web, job) sit behind kamal-proxy, which terminates SSL, manages
-Let's Encrypt certificates, and health-checks new containers for zero-downtime
-rollouts. Accessories run alongside and are **not** touched by `kamal deploy` —
-boot them yourself:
-
-```bash
-kamal accessory boot litestream      # first time
-kamal accessory reboot litestream    # after a config change
-kamal accessory logs litestream -f
-```
-
-The generated `production.rb` logs to STDOUT and serves `public/` with no env
-vars set. Web concurrency is set in `config/puma.rb` — see Puma tuning in
-`docs/rails-8-modern-stack.md` — so measure before adding `WEB_CONCURRENCY` or
-`RAILS_MAX_THREADS` here.
-
-Everyday commands: `bin/kamal setup` (first deploy), `deploy`,
-`deploy --skip-push` (image already pushed by CI), `logs -f [-r job]`,
-`console`, `ssh`.
-
-Secrets come from the environment via `.kamal/secrets`, which is not committed:
-
-```bash
-KAMAL_REGISTRY_PASSWORD=$KAMAL_REGISTRY_PASSWORD
-RAILS_MASTER_KEY=$(cat config/master.key)
-TUNNEL_TOKEN=$TUNNEL_TOKEN
-```
+Accessories are **not** touched by `kamal deploy`: `kamal accessory boot
+litestream` the first time, `reboot` after a config change. Web concurrency is
+set in `config/puma.rb` (Puma tuning in `docs/rails-8-modern-stack.md`), so
+measure before adding `WEB_CONCURRENCY` or `RAILS_MAX_THREADS` to `env:`.
 
 ## Litestream
 
-Continuous replication of SQLite to object storage, with point-in-time restore
-and no application changes. The primary can also serve live read-only replicas,
-which pull pages from object storage on demand — a read-only VFS that requires
-CGO.
+Continuous replication of SQLite to object storage with point-in-time restore.
+The primary can also serve live read-only replicas, which pull pages from object
+storage on demand (a read-only VFS that requires CGO). Litestream is pre-1.0,
+so treat the config as stable in practice but not SemVer-guaranteed.
 
 Each database takes a single `replica:` map, and retention is global under
-`snapshot.retention`. Litestream is pre-1.0, so treat the config as stable in
-practice but not SemVer-guaranteed.
-
-**What to replicate.** Always the primary. The queue database is a judgment
-call — it holds enqueued jobs that haven't run, so replicate it if losing
-pending work in a crash matters. Skip cache and cable; both are transient and
-regenerate on demand, and replicating them just costs storage and noise.
-
-R2 is S3-compatible, so it uses the `s3` replica type. A YAML anchor avoids
-repeating the shared fields, and Litestream interpolates `$VAR` after the YAML
-parses, so anchors and env vars compose:
+`snapshot.retention`, so differing windows per database means separate
+Litestream processes. R2 uses the `s3` type; Litestream interpolates `$VAR`
+after the YAML parses, so anchors and env vars compose:
 
 ```yaml
 # config/litestream.yml
@@ -157,144 +102,36 @@ dbs:
   # cache and cable intentionally omitted
 ```
 
-Azure is the same shape with `type: abs`, `bucket` as the container name,
-`endpoint: https://<account>.blob.core.windows.net`, and top-level
-`access-key-id` / `secret-access-key` set from the storage account name and key.
+Azure is the same shape with `type: abs`, `bucket` as the container name and
+`endpoint: https://<account>.blob.core.windows.net`.
 
-Retention is global, so differing windows per database means running separate
-Litestream configs and processes.
+**What to replicate.** Always the primary. The queue database holds enqueued
+jobs that haven't run, so replicate it if losing pending work in a crash
+matters. Skip cache and cable; both regenerate on demand.
 
-Restores take the replica URL, with the same env vars set:
-
-```bash
-litestream restore -o /rails/storage/production.sqlite3 \
-  s3://myapp-backups/production.sqlite3
-
-litestream restore -o /rails/storage/production.sqlite3 \
-  -timestamp "2024-01-15T10:30:00Z" s3://myapp-backups/production.sqlite3
-
-litestream ltx s3://myapp-backups/production.sqlite3   # list available LTX files
-litestream info s3://myapp-backups/production.sqlite3
-```
-
-```hcl
-resource "cloudflare_r2_bucket" "backups" {
-  account_id    = var.cloudflare_account_id
-  name          = "myapp-backups"
-  location      = "enam"
-  storage_class = "Standard"
-}
-```
+Restores take the replica URL with the same env vars set; `-timestamp` picks a
+point in time, `litestream ltx <url>` lists the available LTX files (the
+pre-0.5 `wal` subcommand is gone, and 0.3-format backups don't restore).
 
 ## VM provisioning
 
-Cloud-init runs once at first boot: install Docker for Kamal, create a non-root
-`deploy` user in the docker group, start the tunnel daemon, join the VPN, and
-close the firewall to everything except VPN traffic. HTTP never needs an open
-port because it arrives through the tunnel.
+Cloud-init at first boot: install Docker for Kamal, create a non-root `deploy`
+user in the `docker` group, install and enable `cloudflared` as a systemd
+service running `tunnel --no-autoupdate run --token ...` under its own system
+user, `tailscale up --authkey=... --ssh`, then `ufw default deny incoming` with
+only `41641/udp` (Tailscale) and `3478/udp` (STUN) open. HTTP never needs an
+open port because it arrives through the tunnel.
 
-```yaml
-#cloud-config
-package_update: true
-package_upgrade: true
+## ACME through a tunnel
 
-packages: [docker.io, docker-compose, curl, git, jq, ufw]
+Combining strict SSL, a tunnel and Workers means kamal-proxy's HTTP-01
+challenges need three layers configured together — any one alone fails:
 
-users:
-  - name: deploy
-    groups: [sudo, docker]
-    shell: /bin/bash
-    sudo: ALL=(ALL) NOPASSWD:ALL
-    ssh_authorized_keys:
-      - ${ssh_public_key}
-
-write_files:
-  - path: /etc/systemd/system/cloudflared.service
-    content: |
-      [Unit]
-      Description=Cloudflare Tunnel
-      After=network-online.target
-      Wants=network-online.target
-
-      [Service]
-      Type=simple
-      User=cloudflared
-      ExecStart=/usr/bin/cloudflared tunnel --no-autoupdate run --token ${tunnel_token}
-      Restart=always
-      RestartSec=5
-
-      [Install]
-      WantedBy=multi-user.target
-
-runcmd:
-  - curl -fsSL https://pkg.cloudflare.com/cloudflare-main.gpg | gpg --dearmor -o /usr/share/keyrings/cloudflare.gpg
-  - echo "deb [signed-by=/usr/share/keyrings/cloudflare.gpg] https://pkg.cloudflare.com/cloudflared $(lsb_release -cs) main" > /etc/apt/sources.list.d/cloudflared.list
-  - apt-get update && apt-get install -y cloudflared
-  - useradd -r -s /usr/sbin/nologin cloudflared
-  - systemctl enable --now cloudflared
-
-  - curl -fsSL https://tailscale.com/install.sh | sh
-  - tailscale up --authkey=${tailscale_auth_key} --ssh
-
-  - ufw default deny incoming
-  - ufw default allow outgoing
-  - ufw allow 41641/udp    # VPN control traffic
-  - ufw allow 3478/udp     # STUN, NAT traversal
-  - ufw --force enable
-```
-
-## Tunnel and ACME
-
-```hcl
-resource "cloudflare_zero_trust_tunnel_cloudflared" "app" {
-  account_id = var.cloudflare_account_id
-  name       = "app-tunnel"
-  config_src = "cloudflare"
-}
-
-resource "cloudflare_zero_trust_tunnel_cloudflared_config" "app" {
-  account_id = var.cloudflare_account_id
-  tunnel_id  = cloudflare_zero_trust_tunnel_cloudflared.app.id
-  config = {
-    ingress = [
-      {
-        hostname = "app.example.com"
-        path     = "/.well-known/acme-challenge/*"
-        service  = "http://localhost:80"
-      },
-      {
-        hostname = "app.example.com"
-        service  = "https://localhost:443"
-        origin_request = { origin_server_name = "app.example.com" }
-      },
-      { service = "http_status:404" },
-    ]
-  }
-}
-
-resource "cloudflare_dns_record" "app" {
-  zone_id = var.cloudflare_zone_id
-  name    = "app.example.com"
-  type    = "CNAME"
-  content = "${cloudflare_zero_trust_tunnel_cloudflared.app.id}.cfargotunnel.com"
-  ttl     = 1
-  proxied = true
-}
-
-data "cloudflare_zero_trust_tunnel_cloudflared_token" "app" {
-  account_id = var.cloudflare_account_id
-  tunnel_id  = cloudflare_zero_trust_tunnel_cloudflared.app.id
-}
-```
-
-Combining strict SSL, a tunnel, and Workers means HTTP-01 challenges need three
-layers configured together — any one alone fails:
-
-| Layer   | Where                                            | Setting                              |
-|---------|--------------------------------------------------|--------------------------------------|
-| Tunnel  | tunnel config ingress                            | `service = "http://localhost:80"` for the ACME path |
-| Ruleset | `cloudflare_ruleset`, `http_config_settings`     | `ssl = "flexible"` for the ACME path |
-| Worker  | `cloudflare_workers_route`                       | route with no script, so it bypasses |
+| Layer   | Where                                        | Setting                                                  |
+|---------|----------------------------------------------|----------------------------------------------------------|
+| Tunnel  | tunnel config ingress                        | `/.well-known/acme-challenge/*` → `http://localhost:80`, before the `https://localhost:443` catch-all |
+| Ruleset | `cloudflare_ruleset`, `http_config_settings` | `set_config` with `ssl = "flexible"` for the ACME path   |
+| Worker  | `cloudflare_workers_route`                   | a route with no script, so the path bypasses the Worker  |
 
 ```hcl
 resource "cloudflare_ruleset" "acme_ssl_bypass" {
@@ -317,117 +154,33 @@ resource "cloudflare_workers_route" "acme_bypass" {
 }
 ```
 
+The HTTPS ingress needs `origin_request = { origin_server_name = "app.example.com" }`
+so cloudflared sends that SNI to kamal-proxy and validates its certificate
+against it rather than against `localhost`.
+
 ## CI/CD
 
-Scan, lint, and test on every PR; build and deploy only from main. The deploy
-job joins the VPN before it can reach the server at all.
+Scan (`brakeman`, `bundler-audit`, `importmap audit`), lint and test on every
+PR; build and deploy only from `main`. Rules the generated workflow doesn't
+follow:
 
-```yaml
-# .github/workflows/deploy.yml
-name: CI/CD
+- Pin every action to a commit SHA with the version in a comment. A tag can be
+  moved to malicious code, a SHA can't, and Dependabot still bumps both. Audit
+  with [zizmor](https://docs.zizmor.sh) (`zizmor .github/`).
+- `persist-credentials: false` on every checkout, and top-level
+  `permissions: { contents: read }`. Job-level `permissions:` replace the
+  top-level block rather than extending it, so the build job restates
+  `contents: read` beside `packages: write` for ghcr.io.
+- `bin/rails herb:check` goes in the test job because it boots the app. Run
+  `test:system` with `if: always()` and upload `tmp/screenshots` on failure.
+- The deploy job joins the VPN with `tailscale/github-action` (OAuth client,
+  `tags: tag:ci`), then runs `kamal deploy --skip-push` if `kamal proxy status`
+  succeeds and `kamal setup` otherwise. `RAILS_MASTER_KEY` is needed at deploy
+  and runtime, not to build the image.
 
-on:
-  pull_request:
-  push:
-    branches: [main]
-
-permissions:
-  contents: read
-
-jobs:
-  scan:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with: { persist-credentials: false }
-      - uses: ruby/setup-ruby@651ff0d62c5c79bed6d53ec518387aae20e72c1a # v1.329.0
-        with: { bundler-cache: true }
-      - run: bin/brakeman --no-pager --exit-on-warn
-      - run: bin/bundler-audit
-      - run: bin/importmap audit
-
-  lint:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with: { persist-credentials: false }
-      - uses: ruby/setup-ruby@651ff0d62c5c79bed6d53ec518387aae20e72c1a # v1.329.0
-        with: { bundler-cache: true }
-      - run: bin/rubocop -f github
-
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with: { persist-credentials: false }
-      - uses: ruby/setup-ruby@651ff0d62c5c79bed6d53ec518387aae20e72c1a # v1.329.0
-        with: { bundler-cache: true }
-      - run: bin/rails herb:check
-      - run: bin/rails db:test:prepare test
-      - run: bin/rails test:system
-        if: always()
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: failure()
-        with: { name: screenshots, path: tmp/screenshots }
-
-  build:
-    needs: [scan, lint, test]
-    if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read     # job permissions replace the top-level ones, so restate this
-      packages: write    # ghcr.io push
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with: { persist-credentials: false }
-      - uses: ruby/setup-ruby@651ff0d62c5c79bed6d53ec518387aae20e72c1a # v1.329.0
-        with: { bundler-cache: true }
-      - run: bin/kamal build push
-        env:
-          KAMAL_REGISTRY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
-
-  deploy:
-    needs: [build]
-    if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with: { persist-credentials: false }
-      - uses: ruby/setup-ruby@651ff0d62c5c79bed6d53ec518387aae20e72c1a # v1.329.0
-        with: { bundler-cache: true }
-      - uses: tailscale/github-action@d1b6cd204f8dceda5b3eaad7f1f767be390056cd # v4.2.0
-        with:
-          oauth-client-id: ${{ secrets.TAILSCALE_OAUTH_CLIENT_ID }}
-          oauth-secret: ${{ secrets.TAILSCALE_OAUTH_CLIENT_SECRET }}
-          tags: tag:ci
-      - run: |
-          if bin/kamal proxy status 2>/dev/null; then
-            bin/kamal deploy --skip-push
-          else
-            bin/kamal setup
-          fi
-        env:
-          RAILS_MASTER_KEY: ${{ secrets.RAILS_MASTER_KEY }}
-          KAMAL_REGISTRY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
-```
-
-Pin every action to a commit SHA with the version in a comment: a tag can be
-moved to malicious code, a SHA can't, and Dependabot still bumps both.
-`persist-credentials: false` keeps the token out of `.git/config`, and the
-top-level `permissions:` makes every job read-only unless it asks for more.
-Audit the workflow files with [zizmor](https://docs.zizmor.sh) (`zizmor
-.github/`), which flags unpinned actions, persisted credentials and template
-injection.
-
-`RAILS_MASTER_KEY` is needed at deploy and runtime, not to build the image.
-`GITHUB_TOKEN` is provided automatically but needs `packages: write`. The
-Tailscale OAuth pair and the Litestream storage credentials come from their
-respective consoles.
-
-`herb:check` sits in the test job because it boots the app. The scan job's
-`bin/bundler-audit` covers every gem except Rails, whose advisories it can't see
-while the app runs main (see `docs/rails-8-modern-stack.md`). Dependabot's
-revision bumps are what deliver Rails security fixes:
+The scan job's `bundler-audit` covers every gem except Rails, whose advisories
+it can't see while the app runs main (see `docs/rails-8-modern-stack.md`).
+Dependabot's daily revision bumps deliver Rails security fixes:
 
 ```yaml
 # .github/dependabot.yml
@@ -449,28 +202,16 @@ updates:
         patterns: ["*"]
 ```
 
-With `gem "rails", github: "rails/rails", branch: "main"`, the daily grouped PR
-moves the locked revision forward; a `ref:` pin would never be bumped. A
-`cooldown:` (holding new releases for some days) blunts supply-chain attacks,
-but it delays security fixes the same way, so list `rails` and other
+A `cooldown:` (holding new releases for some days) blunts supply-chain attacks
+but delays security fixes the same way, so list `rails` and other
 security-critical gems under `cooldown.exclude`.
 
-## Active Storage
+## Active Storage on R2
 
-```yaml
-# config/storage.yml
-r2:
-  service: S3                      # R2 is S3-compatible; needs the aws-sdk-s3 gem
-  access_key_id: <%= Rails.application.credentials.dig(:r2, :access_key_id) %>
-  secret_access_key: <%= Rails.application.credentials.dig(:r2, :secret_access_key) %>
-  endpoint: https://<account_id>.r2.cloudflarestorage.com
-  region: auto
-  bucket: myapp-uploads
-  force_path_style: true
-```
-
-Direct uploads need CORS on the bucket — allow the app origin for
-`GET/HEAD/PUT/POST/OPTIONS` and expose `ETag`.
+R2 is S3-compatible: `service: S3` with the `aws-sdk-s3` gem,
+`endpoint: https://<account_id>.r2.cloudflarestorage.com`, `region: auto` and
+`force_path_style: true`. Direct uploads need CORS on the bucket — allow the app
+origin for `GET/HEAD/PUT/POST/OPTIONS` and expose `ETag`.
 
 ## Dockerfile
 
@@ -486,58 +227,36 @@ generated file already does what hand-written ones tend to get wrong:
 - `BUNDLE_WITHOUT="development"`, `bootsnap precompile --gemfile`, and `git` in
   the build stage, which Bundler needs to clone rails/rails; the checkouts'
   `.git` directories are deleted in the same layer.
-- A non-root `USER 1000:1000` set before `COPY --chown=rails:rails`, so the app
-  owns only its runtime files.
+- A non-root `USER 1000:1000` set before `COPY --chown=rails:rails`.
 - `ARG RUBY_VERSION` matching `.ruby-version`; bump both together.
 - The entrypoint runs `db:prepare` only when the command is `rails server`, so
   `kamal console` and one-off commands don't migrate.
 
 Deviations worth making: add `poppler-utils` (PDF previews) or other runtime
 libraries to the base stage's package list, and set `builder: arch:` in
-`config/deploy.yml` to the server's architecture.
-
-`bin/thrust` wraps Puma with Thruster (`gem "thruster", require: false`), which
-adds X-Sendfile, asset caching, compression, and HTTP/2.
+`config/deploy.yml` to the server's architecture. `bin/thrust` wraps Puma with
+Thruster (`gem "thruster", require: false`) for X-Sendfile, asset caching,
+compression and HTTP/2.
 
 ## SSL behind a proxy
 
-With Cloudflare and kamal-proxy both in front of the app, set **both**:
-
-```ruby
-config.assume_ssl = true
-config.force_ssl = true
-```
-
-`assume_ssl` marks the request as HTTPS before `force_ssl` inspects it. With
-only `force_ssl`, the proxy's plain-HTTP hop to the app triggers a redirect that
-the proxy re-issues, producing a loop.
+With Cloudflare and kamal-proxy both in front of the app, set **both**
+`config.assume_ssl = true` and `config.force_ssl = true`. `assume_ssl` marks
+the request as HTTPS before `force_ssl` inspects it; with only `force_ssl`, the
+proxy's plain-HTTP hop triggers a redirect that the proxy re-issues, producing
+a loop.
 
 ## Health checks and logging
 
-Use the built-in endpoint the generator routes, which kamal-proxy probes before
-switching traffic:
+The generated `get "up" => "rails/health#show"` is what kamal-proxy probes
+before switching traffic. It skips `ApplicationController`, so authentication
+filters never block it. Don't fold the database, cache or queue into the probe:
+a probe that fails when a dependency hiccups gets healthy containers pulled out
+of rotation. Monitor those separately.
 
-```ruby
-# config/routes.rb
-get "up" => "rails/health#show", as: :rails_health_check
-```
-
-It returns 200 once the app has booted and 500 if it raises. It skips
-`ApplicationController`, so authentication filters never block it. Don't fold
-the database, cache or queue into the probe: a probe that fails when a
-dependency hiccups gets healthy containers pulled out of rotation. Monitor those
-separately.
-
-```ruby
-config.log_level = ENV.fetch("RAILS_LOG_LEVEL", "info").to_sym
-config.log_tags = [:request_id]   # trace a request across log lines
-```
-
-Tag error reports with the deployed revision so a stack trace maps to a commit:
-
-```ruby
-Sentry.set_context("app", { revision: Rails.app.revision })
-```
+`config.log_tags = [:request_id]` traces a request across log lines, and
+`Sentry.set_context("app", { revision: Rails.app.revision })` maps a stack trace
+to a commit.
 
 ## References
 

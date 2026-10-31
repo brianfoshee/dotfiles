@@ -47,12 +47,6 @@ inherit `ApplicationJob`.
 as a table of contents. A model concern can `include ::Eventable` and override
 its template hooks.
 
-```ruby
-class Card < ApplicationRecord
-  include Closeable, Assignable, Taggable, Searchable, Eventable
-end
-```
-
 **Strict REST.** Map every action onto a resource instead of adding custom
 controller actions — `post :close` becomes a nested `resource :closure` served by
 `Cards::ClosuresController#create` and `#destroy`.
@@ -70,30 +64,30 @@ Current. Outside a request, use `Current.set(user:, account:)`.
 
 **Event records.** `track_event` writes an `Event` row per domain action, inside
 the verb's transaction or from a lifecycle callback. Not event sourcing — state
-lives in its own tables. Events drive the timeline, notifications and webhooks.
+lives in its own tables. Events drive the timeline, notifications and webhooks. Per-user state such as a star isn't activity and tracks no event.
+
+**Notifications** fan out in a job per source, dedupe on a unique
+`[recipient_id, source_type, source_id]` index with `create_or_find_by!`, and
+record read state as a `read_at` timestamp. Create them in one recipient order
+everywhere (`sort_by(&:id)`) so concurrent runs can't deadlock.
 
 **Smart defaults with lambdas** keep associations implicit:
-
-```ruby
-belongs_to :account, default: -> { board.account }
-belongs_to :creator, default: -> { Current.user }
-```
+`belongs_to :account, default: -> { board.account }` and
+`belongs_to :creator, default: -> { Current.user }`.
 
 **Intention-revealing domain methods.** `card.close(user:)` over
 `card.update(status: :closed)` — it encapsulates the business rules, wraps them
 in a transaction, and tracks the event.
 
-**Background jobs delegate to models.** Jobs stay thin wrappers. `deliver_later`
-enqueues a job whose `perform` calls `deliver`; the `_later` method is usually
-private and fired from `after_*_commit`:
+**Service-shaped classes** earn their place for multi-model operations, external
+API integrations and form objects. They live in `app/models`, under the model's
+namespace when they serve one model (`Card::Importer#import`), named with a
+domain verb rather than `#call`. When a model owns the collaborator, the model
+exposes the entry point (`card.import_later`), not the controller.
 
-```ruby
-class Webhook::DeliveryJob < ApplicationJob
-  def perform(delivery)
-    delivery.deliver
-  end
-end
-```
+**Background jobs delegate to models.** Jobs stay thin wrappers: `deliver_later`
+enqueues a job whose `perform` calls `deliver`, and the `_later` method is
+usually private and fired from `after_*_commit`.
 
 **Sequential user-facing IDs.** UUID primary keys with a separate sequential
 number for display; override `to_param` so URLs use the number. Assign it in
@@ -175,14 +169,12 @@ Review alone doesn't verify a design. Once it lands as code, run the test suite
 
 ## Reference docs
 
-- **`docs/anti-patterns.md`** — service objects, fat controllers, god objects, custom actions, over-engineering, missing transactions, mocked tests, hand-built attribute and markup strings, ERB output in attribute position, where service-shaped classes belong
-- **`docs/feature-design-patterns.md`** — starring, comments, search, notifications as compact migration + model + controller snippets
 - **`docs/authorization-and-roles.md`** — roles, permissions, access control, opt-out macros and `*Scoped` concerns, bearer tokens, Active Storage authorization, revocation, Identity vs User separation, multi-tenant user management
-- **`docs/view-patterns.md`** — instance variables vs locals, helpers vs ERB, partial extraction, display variants, Herb-safe templates, Turbo refresh morphs, caching, JSON with jbuilder, Stimulus
-- **`docs/passkey-authentication.md`** — WebAuthn/passkeys, signed challenges, admin-controlled provisioning, clone detection, virtual authenticator testing
+- **`docs/view-patterns.md`** — semantic tag builders, display-variant partials, Herb-safe templates and hand-built attribute strings, Turbo refresh morphs, fragment-cache keys, JSON with jbuilder
+- **`docs/passkey-authentication.md`** — passkey-only auth: Current.user binding, signed challenges, magic-link provisioning, webauthn-ruby encoding traps, virtual authenticator testing
 - **`docs/uuidv7-sqlite.md`** — UUID generation, the binary-UUID alternative, Active Storage config, fixture IDs, foreign keys, migrations
 - **`docs/sqlite-extensions-and-features.md`** — `extensions:` config, sqlite-vec vector search, FTS5, sqlean, generated columns, RETURNING, JSON, column length limits, the STRICT-table caveat
-- **`docs/testing-pyramid.md`** — test levels and distribution, avoiding slow system tests, JSON fields, multi-tenancy testing, parallel and shuffled-order runs, CSRF and content-type pins, bin/ci groups
+- **`docs/testing-pyramid.md`** — fixture UUIDs, multi-tenancy and sign-in test setup, parallel and shuffled-order runs, CSRF and content-type pins, bin/ci groups
 - **`docs/lexxy-rich-text-editor.md`** — rich text and ActionText customization, pluggable editor registry, @mentions, slash commands, SGID attachables, tables, Tailwind styling
 - **`docs/rails-8-modern-stack.md`** — running main, Puma plugins and tuning, bin/ci, 8.2 framework defaults, Sec-Fetch-Site CSRF, Active Storage analysis, Herb, Active Record, SQLite multi-database, Solid adapters, job continuations, framework patches, unified credentials, revision tracking
-- **`docs/production-infrastructure.md`** — Kamal, Cloudflare Tunnel, ACME passthrough, R2, Litestream, cloud-init, CI/CD, Dependabot, Dockerfiles
+- **`docs/production-infrastructure.md`** — Kamal accessories, Litestream v0.5 config, ACME through a tunnel, CI/CD hardening, Dependabot for rails main, generated-Dockerfile deviations

@@ -61,7 +61,7 @@ WHERE embedding MATCH '[...]' ORDER BY distance LIMIT 10;
 
 `vec0` tables aren't standard AR-modeled tables, so query them via `execute` / `find_by_sql`.
 
-**vs pgvector.** sqlite-vec wins on zero-infra/embedded/edge deployment (single file, no server) — a natural fit when the app is already SQLite-on-Rails and the corpus is small-to-moderate. It does brute-force KNN by default (no mature ANN/HNSW index), so pgvector remains the safer choice for large-scale, high-concurrency RAG.
+It does brute-force KNN by default (no mature ANN/HNSW index), so it suits a small-to-moderate corpus.
 
 ## Full-Text Search: FTS5
 
@@ -114,8 +114,14 @@ The model writes its row from `after_save_commit` with `upsert(..., unique_by: [
 ```ruby
 SearchRecord.joins("JOIN search_records_fts ON search_records_fts.rowid = search_records.id")
             .where("search_records_fts MATCH ?", query)
+            .where(account_id: Current.account.id, board_id: Current.user.board_ids)
             .order(Arel.sql("bm25(search_records_fts)"))
 ```
+
+`MATCH` parses FTS5 query syntax, so quote user input as a phrase; a stray `"`
+raises `ActiveRecord::StatementInvalid`. Each search row carries `account_id`
+and the access-scope key so a search authorizes without a join, and the account
+clears its rows in `before_destroy`.
 
 **litesearch** (part of oldmoe's litestack) offers a model DSL over FTS5 (tokenizers, field weights, associated-table targets) if you want to avoid hand-writing triggers. Note it doesn't support ActionText fields.
 

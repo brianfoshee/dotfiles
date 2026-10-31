@@ -106,22 +106,8 @@ person.attachable_sgid                  # embed this in the prompt item
 ActionText::Attachable.from_node(node)  # resolves it back to the record
 ```
 
-Any model can be embedded:
-
-```ruby
-class Person < ApplicationRecord
-  include ActionText::Attachable
-
-  # Required — how ActionText categorizes the attachment
-  def content_type = "application/vnd.actiontext.mention"
-
-  def to_attachable_partial_path = "people/mention"
-  def attachable_plain_text_representation(caption = nil) = "@#{name}"
-
-  # Fallback when the record is gone
-  def self.to_missing_attachable_partial_path = "people/deleted_mention"
-end
-```
+Any model including `ActionText::Attachable` can be embedded; its
+`content_type` must match the prompt's `application/vnd.actiontext.{name}`.
 
 ## Prompt system
 

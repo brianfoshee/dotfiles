@@ -21,10 +21,7 @@ Foreman, import maps for JavaScript and tailwindcss-rails for CSS. Runs rails/ra
 - [SQLite concurrency](#sqlite-concurrency)
 - [Customizing pragmas](#customizing-pragmas)
 - [Loading SQLite extensions](#loading-sqlite-extensions)
-- [When SQLite fits](#when-sqlite-fits)
-- [Solid Queue / Cache / Cable](#solid-queue--cache--cable)
 - [Framework patches](#framework-patches)
-- [Gems and layout](#gems-and-layout)
 - [References](#references)
 
 ## Running main
@@ -424,51 +421,12 @@ Namespace by environment instead (`namespace: Rails.env` in
 
 ## SQLite multi-database setup
 
-Separate databases per concern give each one its own migration path, backup
-policy, and write contention profile — cache churn never blocks primary writes,
-and the cache can be dropped and rebuilt without touching application data.
-
-```yaml
-# config/database.yml
-default: &default
-  adapter: sqlite3
-  max_connections: <%= ENV.fetch("RAILS_MAX_THREADS") { 5 } %>  # `pool:` is deprecated
-  timeout: 5000  # installs the busy handler; see SQLite concurrency below
-
-development:
-  primary:
-    <<: *default
-    database: storage/db/development.sqlite3
-  queue:
-    <<: *default
-    database: storage/db/development_queue.sqlite3
-    migrations_paths: db/queue_migrate
-  cable:
-    <<: *default
-    database: storage/db/development_cable.sqlite3
-    migrations_paths: db/cable_migrate
-
-production:
-  primary:
-    <<: *default
-    database: storage/production.sqlite3
-  cache:
-    <<: *default
-    database: storage/production_cache.sqlite3
-    migrations_paths: db/cache_migrate
-  queue:
-    <<: *default
-    database: storage/production_queue.sqlite3
-    migrations_paths: db/queue_migrate
-  cable:
-    <<: *default
-    database: storage/production_cable.sqlite3
-    migrations_paths: db/cable_migrate
-```
-
-Migrate each with `bin/rails db:migrate:queue`, `db:migrate:cache`,
-`db:migrate:cable`. Mirror the production Solid wiring in development so the two
-behave alike.
+The generator's `database.yml` gives primary, cache, queue and cable their own
+files, so each has its own migration path (`db:migrate:queue` and friends),
+backup policy and write contention profile. Two things to change in it:
+`max_connections:` replaces the deprecated `pool:` key, and `timeout: 5000`
+installs the busy handler (below). Mirror the production Solid wiring in
+development so the two behave alike.
 
 ## SQLite concurrency
 
@@ -543,65 +501,6 @@ production:
 `docs/sqlite-extensions-and-features.md` covers the ecosystem and modern schema
 features.
 
-## When SQLite fits
-
-Single-server deployments, read-heavy workloads with moderate writes, internal
-and B2B tools, anything deployed with Kamal. Vertical scaling carries these a
-long way — multi-GB databases and thousands of requests per second.
-
-Reach for a client/server database when you need multiple app servers sharing
-one database, multi-region deployment, sustained very high write volume, or
-distributed transactions. Litestream's live read replicas cover some read
-scaling without that move; see `docs/production-infrastructure.md`.
-
-## Solid Queue / Cache / Cable
-
-Solid Queue replaces Sidekiq, Solid Cache replaces Redis/Memcached, and Solid
-Cable replaces the Redis pub/sub backend for ActionCable. All three are ordinary
-Rails APIs at the call site — `Rails.cache.fetch`, `perform_later`,
-`stream_from` — so only the wiring differs.
-
-```ruby
-# config/environments/production.rb
-config.active_job.queue_adapter = :solid_queue
-config.solid_queue.connects_to = { database: { writing: :queue } }
-config.cache_store = :solid_cache_store
-```
-
-`ActionController::RateLimiting` reads
-`config.action_controller.cache_store`, falling back to `config.cache_store`,
-so Solid Cache backs rate limiting without extra configuration.
-
-```yaml
-# config/queue.yml
-production:
-  dispatchers:
-    - polling_interval: 1
-      batch_size: 500
-  workers:
-    - queues: "*"
-      threads: 3
-      processes: 2
-      polling_interval: 0.1
-```
-
-```yaml
-# config/cable.yml
-production:
-  adapter: solid_cable
-  connects_to:
-    database:
-      writing: cable
-  polling_interval: 0.1.seconds
-  message_retention: 1.day
-```
-
-Messages older than `message_retention` are trimmed as new ones are written.
-
-Solid Queue gets ACID guarantees from the database, supports priorities, delays,
-and recurring jobs via `config/recurring.yml`, and mounts a monitoring UI. Solid
-Cache is disk-backed, so it survives restarts and isn't bounded by memory.
-
 ## Framework patches
 
 One file per patch, named `lib/rails_ext/<framework>_<behavior>.rb`, preferably
@@ -618,26 +517,6 @@ Dir[Rails.root.join("lib", "rails_ext", "*.rb")].each { |path| require path }
 
 Open each file with why the patch exists and, on main, the upstream PR that
 will let you delete it.
-
-## Gems and layout
-
-```ruby
-gem "rails", github: "rails/rails", branch: "main"
-gem "sqlite3", ">= 2.4"  # extensions: config
-gem "solid_queue"
-gem "solid_cache"
-gem "solid_cable"
-gem "thruster"  # X-Sendfile, HTTP/2, asset caching
-```
-
-```
-config/
-  ci.rb          database.yml   puma.rb        queue.yml
-db/
-  migrate/       queue_migrate/ cache_migrate/ cable_migrate/
-storage/
-  db/development.sqlite3  production.sqlite3  production_{cache,queue,cable}.sqlite3
-```
 
 ## References
 
