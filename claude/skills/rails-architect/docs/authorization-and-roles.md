@@ -11,8 +11,7 @@ No policy objects, no permissions table.
 - [Four layers of authorization](#four-layers-of-authorization)
 - [Resource access records](#resource-access-records)
 - [Access cascades through associations](#access-cascades-through-associations)
-- [Public and API access](#public-and-api-access)
-- [Testing](#testing)
+- [API access](#api-access)
 - [What to avoid](#what-to-avoid)
 - [References](#references)
 
@@ -61,19 +60,8 @@ act administratively," and cascading every predicate blurs it.
 `can_change?` lets users change themselves, so self-deactivation needs a
 `sole_owner?` guard, checked in a `before_action` after the permission gate.
 
-```ruby
-create_table :users, id: :string do |t|
-  t.references :account, type: :string, null: false, foreign_key: true
-  t.references :identity, type: :string, foreign_key: true  # nil for deactivated users
-  t.string :role, default: "member", null: false
-  t.boolean :active, default: true, null: false
-  t.datetime :verified_at
-  t.timestamps
-end
-```
-
-Active state is separate from role, so deactivating doesn't discard which role
-someone had.
+Active state is a separate boolean from role, so deactivating doesn't discard
+which role someone had, and a deactivated user's `identity_id` is nil.
 
 Good permission methods name a resource and combine role with ownership —
 `can_administer_board?(board)`. Bad ones enumerate capabilities
@@ -315,18 +303,7 @@ module User::Accessor
 end
 ```
 
-## Public and API access
-
-```ruby
-class Public::BoardsController < ApplicationController
-  allow_unauthenticated_access
-
-  def show
-    @board = Board.find_by_published_key(params[:board_id])
-    head :not_found unless @board&.published?
-  end
-end
-```
+## API access
 
 Bearer tokens authenticate JSON requests only; any other format gets a 401
 rather than a login redirect. Each token is read or write, and a read token
@@ -367,30 +344,11 @@ end
 A controller that serves files to token clients, such as Active Storage's,
 overrides the JSON-only check.
 
-## Testing
-
-Permission predicates are model tests; the enforcement is a controller test.
-Cover the negative cases — self-administration and the owner exception are where
-these go wrong.
-
-```ruby
-test "admin can administer other users except owner and self" do
-  admin = users(:admin)
-  assert admin.can_administer?(users(:member))
-  assert_not admin.can_administer?(users(:owner))
-  assert_not admin.can_administer?(admin)
-end
-
-test "member cannot destroy a board they didn't create" do
-  sign_in_as :member
-  delete board_url(boards(:created_by_admin))
-  assert_response :forbidden
-end
-```
-
 ## What to avoid
 
-**Refetching then checking.** `Board.find(params[:id])` followed by a manual
+**Refetching then checking.** The negative cases — self-administration and
+the owner exception — are where permission predicates go wrong; test those.
+ `Board.find(params[:id])` followed by a manual
 `accessible_to?` is a check you can forget. Scope through `Current.user`
 instead, and reserve explicit predicates for administrative actions.
 
