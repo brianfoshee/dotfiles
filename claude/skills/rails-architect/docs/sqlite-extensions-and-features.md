@@ -114,8 +114,14 @@ The model writes its row from `after_save_commit` with `upsert(..., unique_by: [
 ```ruby
 SearchRecord.joins("JOIN search_records_fts ON search_records_fts.rowid = search_records.id")
             .where("search_records_fts MATCH ?", query)
+            .where(account_id: Current.account.id, board_id: Current.user.board_ids)
             .order(Arel.sql("bm25(search_records_fts)"))
 ```
+
+`MATCH` parses FTS5 query syntax, so quote user input as a phrase; a stray `"`
+raises `ActiveRecord::StatementInvalid`. Each search row carries `account_id`
+and the access-scope key so a search authorizes without a join, and the account
+clears its rows in `before_destroy`.
 
 **litesearch** (part of oldmoe's litestack) offers a model DSL over FTS5 (tokenizers, field weights, associated-table targets) if you want to avoid hand-writing triggers. Note it doesn't support ActionText fields.
 

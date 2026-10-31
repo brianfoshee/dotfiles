@@ -70,7 +70,12 @@ Current. Outside a request, use `Current.set(user:, account:)`.
 
 **Event records.** `track_event` writes an `Event` row per domain action, inside
 the verb's transaction or from a lifecycle callback. Not event sourcing — state
-lives in its own tables. Events drive the timeline, notifications and webhooks.
+lives in its own tables. Events drive the timeline, notifications and webhooks. Per-user state such as a star isn't activity and tracks no event.
+
+**Notifications** fan out in a job per source, dedupe on a unique
+`[recipient_id, source_type, source_id]` index with `create_or_find_by!`, and
+record read state as a `read_at` timestamp. Create them in one recipient order
+everywhere (`sort_by(&:id)`) so concurrent runs can't deadlock.
 
 **Smart defaults with lambdas** keep associations implicit:
 
@@ -181,7 +186,6 @@ Review alone doesn't verify a design. Once it lands as code, run the test suite
 
 ## Reference docs
 
-- **`docs/feature-design-patterns.md`** — starring, comments, search, notifications as compact migration + model + controller snippets
 - **`docs/authorization-and-roles.md`** — roles, permissions, access control, opt-out macros and `*Scoped` concerns, bearer tokens, Active Storage authorization, revocation, Identity vs User separation, multi-tenant user management
 - **`docs/view-patterns.md`** — instance variables vs locals, helpers vs ERB, partial extraction, display variants, Herb-safe templates and hand-built attribute strings, Turbo refresh morphs, caching, JSON with jbuilder, Stimulus
 - **`docs/passkey-authentication.md`** — WebAuthn/passkeys, signed challenges, admin-controlled provisioning, clone detection, virtual authenticator testing
