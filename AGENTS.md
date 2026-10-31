@@ -1,4 +1,4 @@
-# CLAUDE.md
+# AGENTS.md
 
 Brian's personal dotfiles — zsh, vim, tmux, sqlite/psql/gem configs, and Claude
 Code settings — symlinked into `$HOME` by `install.sh`, which backs up any
@@ -38,7 +38,7 @@ curl -o claude/skills/sosumi/SKILL.md https://sosumi.ai/SKILL.md
 curl -o claude/skills/agent-browser/SKILL.md https://raw.githubusercontent.com/vercel-labs/agent-browser/main/skills/agent-browser/SKILL.md
 ```
 
-Conventions for writing skills live in `claude/skills/CLAUDE.md`.
+Conventions for writing skills live in `claude/skills/AGENTS.md`.
 
 **Tailwind Plus components are licensed.** `design-with-tailwind-plus` is backed
 by an untracked 23MB `tailwind_all_components.json`. Raise license compliance
