@@ -47,12 +47,6 @@ inherit `ApplicationJob`.
 as a table of contents. A model concern can `include ::Eventable` and override
 its template hooks.
 
-```ruby
-class Card < ApplicationRecord
-  include Closeable, Assignable, Taggable, Searchable, Eventable
-end
-```
-
 **Strict REST.** Map every action onto a resource instead of adding custom
 controller actions — `post :close` becomes a nested `resource :closure` served by
 `Cards::ClosuresController#create` and `#destroy`.
@@ -78,11 +72,8 @@ record read state as a `read_at` timestamp. Create them in one recipient order
 everywhere (`sort_by(&:id)`) so concurrent runs can't deadlock.
 
 **Smart defaults with lambdas** keep associations implicit:
-
-```ruby
-belongs_to :account, default: -> { board.account }
-belongs_to :creator, default: -> { Current.user }
-```
+`belongs_to :account, default: -> { board.account }` and
+`belongs_to :creator, default: -> { Current.user }`.
 
 **Intention-revealing domain methods.** `card.close(user:)` over
 `card.update(status: :closed)` — it encapsulates the business rules, wraps them
@@ -94,17 +85,9 @@ namespace when they serve one model (`Card::Importer#import`), named with a
 domain verb rather than `#call`. When a model owns the collaborator, the model
 exposes the entry point (`card.import_later`), not the controller.
 
-**Background jobs delegate to models.** Jobs stay thin wrappers. `deliver_later`
-enqueues a job whose `perform` calls `deliver`; the `_later` method is usually
-private and fired from `after_*_commit`:
-
-```ruby
-class Webhook::DeliveryJob < ApplicationJob
-  def perform(delivery)
-    delivery.deliver
-  end
-end
-```
+**Background jobs delegate to models.** Jobs stay thin wrappers: `deliver_later`
+enqueues a job whose `perform` calls `deliver`, and the `_later` method is
+usually private and fired from `after_*_commit`.
 
 **Sequential user-facing IDs.** UUID primary keys with a separate sequential
 number for display; override `to_param` so URLs use the number. Assign it in
