@@ -9,13 +9,10 @@ comparison gives correct chronological ordering.
 The cost is ~30 bytes per row versus an integer, on both the table and every
 index. Only worth weighing on tables with hundreds of millions of rows.
 
-The alternative is 16-byte BLOBs behind a custom `:uuid` attribute type that
-stores binary and exposes a string (hex, or base36 for shorter URLs). Register
-the id default at the type level, for every model whose primary key is `:uuid`,
-and Active Storage and Action Text need none of the wiring below. The price is
-a custom type, adapter and schema-dumper patches against private Active Record
-APIs, and ids you can't read in the `sqlite3` shell. Take it only when the TEXT
-overhead measurably matters.
+The alternative, 16-byte BLOBs behind a custom `:uuid` attribute type, costs
+adapter and schema-dumper patches against private Active Record APIs and ids
+you can't read in the `sqlite3` shell. Take it only when the TEXT overhead
+measurably matters.
 
 ## Contents
 
@@ -23,8 +20,6 @@ overhead measurably matters.
 - [Active Storage and Action Text](#active-storage-and-action-text)
 - [Migrations](#migrations)
 - [Fixtures](#fixtures)
-- [Adopting UUIDs in an existing app](#adopting-uuids-in-an-existing-app)
-- [Format reference](#format-reference)
 - [References](#references)
 
 ## Configuration
@@ -115,9 +110,7 @@ end
 `type: :string` on every reference is the easy thing to forget; without it Rails
 creates a bigint column and the foreign key silently never matches.
 
-Some MySQL-backed apps drop foreign-key constraints entirely, citing deadlocks,
-bulk-load and truncation friction, and write cost, and leave integrity to the
-models. On SQLite, keep them. For a bulk import that loads rows out of
+Keep foreign-key constraints. For a bulk import that loads rows out of
 dependency order, run `PRAGMA defer_foreign_keys = ON` inside the import's
 transaction so the constraints are checked once, at commit.
 
@@ -141,15 +134,7 @@ Keep `id: :string` when the join table carries its own attributes, might grow
 business logic, or needs to be referenced from elsewhere.
 
 The generated Active Storage migration picks the type up from the generator
-config, so it needs no editing:
-
-```ruby
-def primary_and_foreign_key_types
-  config = Rails.configuration.generators
-  setting = config.options[config.orm][:primary_key_type]
-  [setting || :primary_key, setting || :bigint]
-end
-```
+config, so it needs no editing.
 
 ## Fixtures
 
@@ -163,31 +148,6 @@ which record it just made. Assert against the record, not a fixture:
 
 ```ruby
 assert_redirected_to user_url(User.last)
-```
-
-## Adopting UUIDs in an existing app
-
-On a new project, or one whose database can be recreated, switch the generator
-config and rebuild: `bin/rails db:drop db:create db:migrate db:seed`, then
-`db:test:prepare`.
-
-Converting a populated database is a data-migration project, not a migration
-file. Every table needs a parallel UUID column, every foreign key has to be
-rewritten to match, and the swap has to happen atomically across all of them.
-Worth doing only alongside a refactor that already justifies the risk.
-
-## Format reference
-
-```
-xxxxxxxx-xxxx-7xxx-yxxx-xxxxxxxxxxxx
-                ^    ^
-                |    variant (8, 9, a, or b)
-                version, always 7
-
-bytes 0-5    48-bit millisecond timestamp
-bytes 6-7    4-bit version + 12 bits random (or extra timestamp precision)
-bytes 8-9    2-bit variant + 14 bits random
-bytes 10-15  48 bits random
 ```
 
 ## References
