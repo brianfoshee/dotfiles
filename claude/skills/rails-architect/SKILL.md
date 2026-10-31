@@ -187,7 +187,7 @@ Review alone doesn't verify a design. Once it lands as code, run the test suite
 ## Reference docs
 
 - **`docs/authorization-and-roles.md`** — roles, permissions, access control, opt-out macros and `*Scoped` concerns, bearer tokens, Active Storage authorization, revocation, Identity vs User separation, multi-tenant user management
-- **`docs/view-patterns.md`** — instance variables vs locals, helpers vs ERB, partial extraction, display variants, Herb-safe templates and hand-built attribute strings, Turbo refresh morphs, caching, JSON with jbuilder, Stimulus
+- **`docs/view-patterns.md`** — semantic tag builders, display-variant partials, Herb-safe templates and hand-built attribute strings, Turbo refresh morphs, fragment-cache keys, JSON with jbuilder
 - **`docs/passkey-authentication.md`** — WebAuthn/passkeys, signed challenges, admin-controlled provisioning, clone detection, virtual authenticator testing
 - **`docs/uuidv7-sqlite.md`** — UUID generation, the binary-UUID alternative, Active Storage config, fixture IDs, foreign keys, migrations
 - **`docs/sqlite-extensions-and-features.md`** — `extensions:` config, sqlite-vec vector search, FTS5, sqlean, generated columns, RETURNING, JSON, column length limits, the STRICT-table caveat
