@@ -93,10 +93,10 @@ a tag helper and join with `safe_join` or the view helper `to_sentence`
 
 ```erb
 <%# BAD %>
-<%= names.map { "<strong>#{h it}</strong>" }.join(", ").html_safe %>
+<%= names.map { |name| "<strong>#{h name}</strong>" }.join(", ").html_safe %>
 
 <%# GOOD %>
-<%= to_sentence(names.map { tag.strong(it) }) %>
+<%= to_sentence(names.map { |name| tag.strong(name) }) %>
 ```
 
 ## Directory layout and display variants

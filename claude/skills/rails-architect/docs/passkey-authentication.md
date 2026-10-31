@@ -138,7 +138,7 @@ The controllers follow the gem's README. What it doesn't say:
   id must be valid unpadded base64url because the browser decodes it; a raw
   integer primary key fails outright.
 - `exclude:` takes encoded strings, not the binary column:
-  `credentials.pluck(:credential_id).map { Base64.urlsafe_encode64(it, padding: false) }`.
+  `credentials.pluck(:credential_id).map { |id| Base64.urlsafe_encode64(id, padding: false) }`.
   `padding: false` is required, not cosmetic.
 - Replace the gem's random challenge with the signed one:
   `render json: options.as_json.merge(challenge: Webauthn::Challenge.generate(purpose: :registration))`.
