@@ -54,6 +54,21 @@ link_file "$DOTFILES_DIR/nofrils-dark.vim" "$HOME/.vim/colors/nofrils-dark.vim"
 # Claude Code configuration
 link_file "$DOTFILES_DIR/claude" "$HOME/.claude"
 
+# Pick this machine's agent rules: ROLE=personal (default) or ROLE=factory.
+# Without ROLE, an existing role is kept.
+if [ -n "$ROLE" ] || [ ! -L "$HOME/.claude/role.md" ]; then
+    ROLE="${ROLE:-personal}"
+    if [ ! -f "$DOTFILES_DIR/claude/AGENTS.$ROLE.md" ]; then
+        echo "Unknown ROLE '$ROLE': no claude/AGENTS.$ROLE.md" >&2
+        exit 1
+    fi
+    link_file "$DOTFILES_DIR/claude/AGENTS.$ROLE.md" "$HOME/.claude/role.md"
+    # The prompt and tmux bar read this to tell the factory box apart
+    echo "$ROLE" > "$HOME/.machine_role"
+else
+    echo "Keeping existing role: $(readlink "$HOME/.claude/role.md")"
+fi
+
 # Seed live settings from the tracked template on first install.
 # Claude Code rewrites settings.json at runtime, so never overwrite an existing one.
 if [ ! -e "$HOME/.claude/settings.json" ]; then
