@@ -1,8 +1,8 @@
 # Say where this shell is. ~/.machine_role is written by install.sh. The factory
-# box always shows "factory"; any other machine shows user@host over ssh.
+# box always shows "factory[hostname]"; any other machine shows user@host over ssh.
 _prompt_where=""
 if [[ "$(cat ~/.machine_role 2>/dev/null)" == factory ]]; then
-  _prompt_where='%{$fg_bold[magenta]%}factory%{$reset_color%} '
+  _prompt_where='%{$fg_bold[magenta]%}factory[%m]%{$reset_color%} '
 elif [[ -n "$SSH_CONNECTION" ]]; then
   _prompt_where='%{$fg[yellow]%}%n@%m%{$reset_color%} '
 fi
