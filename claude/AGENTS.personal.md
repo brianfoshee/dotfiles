@@ -23,5 +23,5 @@ hierarchy.
 
 ## Git
 
-- Never `git push`; ask me to.
+- Never push to main.
 - Ask how to handle uncommitted changes before starting work.
