@@ -63,6 +63,8 @@ if [ -n "$ROLE" ] || [ ! -L "$HOME/.claude/role.md" ]; then
         exit 1
     fi
     link_file "$DOTFILES_DIR/claude/AGENTS.$ROLE.md" "$HOME/.claude/role.md"
+    # The prompt and tmux bar read this to tell the factory box apart
+    echo "$ROLE" > "$HOME/.machine_role"
 else
     echo "Keeping existing role: $(readlink "$HOME/.claude/role.md")"
 fi
